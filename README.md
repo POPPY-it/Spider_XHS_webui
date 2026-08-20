@@ -303,6 +303,26 @@ PC 参数来源是明确分层的：
 python -m spider.spider
 ```
 
+### 🌐 WebUI 工作台
+
+项目内置了一个本地 WebUI（FastAPI + 纯前端），方便在浏览器里完成采集、导出、浏览与账号管理，无需改代码：
+
+```bash
+source venv/bin/activate
+python -m uvicorn webui.app:app --port 8001
+```
+
+然后打开 `http://127.0.0.1:8001`。包含四个页面：
+
+| 页面 | 功能 |
+|------|------|
+| **采集** | 关键词搜索 / 用户全部笔记 / 单篇笔记，保存媒体 + Excel，带实时进度条，可取消 |
+| **导出** | 把笔记导出为 Markdown + JSONL（可选含评论），适合接入知识库或喂给大模型，输出在 `datas/exports/<集合名>/` |
+| **浏览** | 网页内预览笔记内容、图片/视频、评论与用户主页，不写本地 |
+| **账号** | 查看登录态、粘贴新 Cookie 保存并验证、网页内扫码重新登录（自动写回 `.env`） |
+
+> 端口 8001 可改；若 8000 已被其他服务占用请换一个端口。Cookie 失效时在「账号」页扫码即可重新登录。
+
 ### 🐳 Docker 部署（可选）
 
 ```bash
@@ -319,6 +339,12 @@ Spider_XHS/
 ├── spider/
 │   ├── __init__.py
 │   └── spider.py                    # 主入口：爬虫调用示例
+├── webui/                           # 本地 WebUI 工作台（可选）
+│   ├── app.py                       # FastAPI 路由与启动入口
+│   ├── tasks.py                     # 采集/导出后台任务与进度
+│   ├── login_bridge.py              # Cookie 管理与网页内扫码登录
+│   ├── exporters.py                 # Markdown + JSONL 导出
+│   └── static/index.html            # 单页前端（采集/导出/浏览/账号）
 ├── apis/
 │   ├── xhs_pc_apis.py               # 小红书PC端完整API（采集）
 │   ├── xhs_creator_apis.py          # 创作者平台API（上传发布）

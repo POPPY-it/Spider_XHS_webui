@@ -9,3 +9,6 @@ aiohttp
 opencv-python
 numpy
 qrcode
+fastapi
+uvicorn
+psycopg2-binary

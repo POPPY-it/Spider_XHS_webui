@@ -118,7 +118,7 @@ if __name__ == '__main__':
     #   phone：调用手机号验证码登录接口；不打开浏览器。
     login_type = 'cookie'
     if login_type == 'qrcode':
-        auth = XHSPcAuth.from_qrcode_login(show_in_terminal=True)
+        auth = XHSPcAuth.from_qrcode_login(show_in_terminal=False)
     elif login_type == 'phone':
         auth = XHSPcAuth.from_phone_login()
     elif login_type == 'cookie':
