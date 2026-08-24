@@ -732,9 +732,9 @@ class XHS_Apis():
                 data = res_json.get('data') or {}
                 comments = data.get('comments') or []
                 if not comments:
-                    # 无评论或 token 失效（data 为空）
+                    # 无评论或 token 失效（data 为空，通常是风控降级）
                     if not data:
-                        raise Exception(res_json.get('msg') or '当前笔记暂时无法浏览')
+                        raise Exception('评论接口返回空数据（可能风控限频）')
                     break
                 if 'cursor' in data:
                     cursor = str(data['cursor'])
