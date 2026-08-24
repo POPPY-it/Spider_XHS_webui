@@ -8,9 +8,9 @@
 import os
 
 from fastapi import FastAPI, Query
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
-from webui import login_bridge, tasks
+from webui import agent, login_bridge, tasks
 from webui.datas_api import read_excel, scan_datas, open_in_finder, delete_path
 from webui.hotspot_routes import router as hotspot_router
 from webui.pgy_routes import router as pgy_router
@@ -258,6 +258,47 @@ def datas_delete(payload: dict):
         return _json({"success": True, **delete_path(path)})
     except Exception as exc:
         return _json({"success": False, "error": str(exc)}, 400)
+
+
+# ---------------------------------------------------------------------------
+# 对话 Agent
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/agent/chat")
+def agent_chat(payload: dict):
+    user_input = (payload or {}).get("message", "")
+    if not user_input:
+        return _json({"success": False, "error": "消息不能为空"}, 400)
+
+    import json as _json
+    import queue
+    import threading
+
+    q = queue.Queue()
+
+    def worker():
+        try:
+            agent.run_agent(user_input, lambda text: q.put(("delta", text)))
+            q.put(("done", None))
+        except Exception as exc:
+            q.put(("error", str(exc)))
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    def generate():
+        while True:
+            kind, val = q.get()
+            if kind == "delta":
+                yield f"data: {_json.dumps({'delta': val}, ensure_ascii=False)}\n\n"
+            elif kind == "error":
+                yield f"data: {_json.dumps({'error': val}, ensure_ascii=False)}\n\n"
+                break
+            elif kind == "done":
+                yield "data: [DONE]\n\n"
+                break
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 # ---------------------------------------------------------------------------

@@ -24,6 +24,11 @@ PARSER_VERSION = "2026-07-29.2"
 
 
 def _connect(db_url: str = None):
+    if not db_url:
+        # 运行时动态加载 .env，确保 DATABASE_URL 生效
+        from dotenv import load_dotenv
+        load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env")), override=True)
+        db_url = os.getenv("DATABASE_URL", "")
     url = db_url or DEFAULT_DATABASE_URL
     if not url:
         raise RuntimeError(
