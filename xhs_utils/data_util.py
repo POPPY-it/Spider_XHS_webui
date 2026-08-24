@@ -99,7 +99,14 @@ def handle_note_info(data):
         video_cover = image_list[0] if image_list else None
         video_addr = None
         video_info = data.get('note_card', {}).get('video', {})
-        streams = video_info.get('media', {}).get('stream', {}).get('h264', [])
+        stream = (video_info.get('media') or {}).get('stream') or {}
+        streams = []
+        if isinstance(stream, dict):
+            # 旧字段 h264；新字段 EF4/EF5/EF6/EF7 等编码，都遍历兼容
+            for key, val in stream.items():
+                if isinstance(val, list) and val:
+                    streams = val
+                    break
         if streams:
             video_addr = streams[0].get('master_url') or streams[0].get('url')
         if not video_addr and 'consumer' in video_info:
