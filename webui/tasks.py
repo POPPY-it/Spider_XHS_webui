@@ -90,23 +90,34 @@ def _discover_notes(api, req: dict, log) -> list:
     raise RuntimeError(f"未知模式：{mode}")
 
 
+# 评论抓取的自适应间隔（秒）：限频时拉大，成功时回落，平衡速度与风控
+_COMMENT_INTERVAL = 2.0
+_COMMENT_INTERVAL_MIN = 2.0
+_COMMENT_INTERVAL_MAX = 60.0
+
+
 def _fetch_comments(api, note_url: str, log) -> list:
     """抓取笔记全部评论（一级 + 二级/楼中楼）并标准化；失败时返回空列表。
 
-    评论接口有频率限制，遇到「访问频繁」会自动等待重试。
+    评论接口有频率限制，采用自适应退避：遇到「访问频繁」拉大间隔重试，
+    连续成功则逐步回落到最小间隔。
     """
+    global _COMMENT_INTERVAL
     import time as _t
-    _t.sleep(2.0)  # 评论接口频率限制较严，加大间隔
+    _t.sleep(_COMMENT_INTERVAL)
     for attempt in range(3):
         try:
             success, msg, raw_comments = api.get_note_all_comment(note_url)
             if not success:
                 if "频繁" in (msg or "") or "稍后再试" in (msg or ""):
-                    log(f"  评论接口限频，等待重试（第{attempt + 1}次）...")
-                    _t.sleep(15 * (attempt + 1))
+                    _COMMENT_INTERVAL = min(_COMMENT_INTERVAL * 2, _COMMENT_INTERVAL_MAX)
+                    log(f"  评论接口限频，间隔提升到 {_COMMENT_INTERVAL:.0f} 秒，重试（第{attempt + 1}次）...")
+                    _t.sleep(_COMMENT_INTERVAL)
                     continue
                 log(f"  评论抓取失败：{msg}")
                 return []
+            # 成功：逐步回落间隔
+            _COMMENT_INTERVAL = max(_COMMENT_INTERVAL - 1.0, _COMMENT_INTERVAL_MIN)
             comments = []
             for c in raw_comments:
                 try:
@@ -292,6 +303,34 @@ def _crawl_worker(task_id: str, req: dict) -> None:
                 pass
 
 
+def _note_id_from_url(url: str) -> str:
+    """从笔记 URL 提取 note_id。"""
+    import urllib.parse
+    path = urllib.parse.urlparse(url).path
+    return path.rstrip("/").split("/")[-1]
+
+
+def _completed_note_ids(collection: str) -> set:
+    """从已导出的 notes.jsonl 提取已完成的 note_id 集合（用于断点续传）。"""
+    import json as _json
+    path = os.path.join(exporters._export_dir(collection), "notes.jsonl")
+    if not os.path.exists(path):
+        return set()
+    ids = set()
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = _json.loads(line)
+                if d.get("note_id"):
+                    ids.add(d["note_id"])
+            except Exception:
+                continue
+    return ids
+
+
 def _export_worker(task_id: str, req: dict) -> None:
     auth = None
     try:
@@ -303,6 +342,23 @@ def _export_worker(task_id: str, req: dict) -> None:
         urls = _discover_notes(api, req, lambda m: _log(task_id, m))
         if not urls:
             raise RuntimeError("未发现任何笔记")
+
+        # 断点续传：跳过已完成的笔记
+        completed = _completed_note_ids(collection)
+        if completed:
+            remaining = [u for u in urls if _note_id_from_url(u) not in completed]
+            skipped = len(urls) - len(remaining)
+            if skipped > 0:
+                _log(task_id, f"断点续传：跳过已完成的 {skipped} 篇，剩余 {len(remaining)} 篇")
+            urls = remaining
+            if not urls:
+                _finish(task_id, "done", result={
+                    "note_count": len(completed),
+                    "total": len(completed),
+                    "collection": collection,
+                })
+                return
+
         _set_total(task_id, len(urls))
         _log(task_id, f"开始导出 {len(urls)} 篇笔记到 datas/exports/{collection}/ …")
 

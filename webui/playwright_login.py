@@ -70,16 +70,40 @@ def browser_login(timeout: int = 180) -> str:
         page.on('response', on_response)
 
         print('正在打开小红书登录页，请在浏览器窗口扫码...')
-        page.goto('https://www.xiaohongshu.com/explore', wait_until='domcontentloaded')
+        try:
+            page.goto('https://www.xiaohongshu.com/explore', wait_until='domcontentloaded', timeout=30000)
+        except Exception as e:
+            print(f'打开页面异常（继续等待登录）: {e}')
+
+        # 记录初始 web_session（访客 session）
+        initial_web_session = None
+        for c in context.cookies():
+            if c['name'] == 'web_session':
+                initial_web_session = c['value']
 
         deadline = time.time() + timeout
         while time.time() < deadline:
             if login_ok['flag']:
                 break
-            # 备选检测：URL 跳转到用户主页，或登录弹窗消失
-            if '/user/profile' in page.url or page.locator('.user .reds').count() > 0:
-                login_ok['flag'] = True
-                break
+            # 检测 Cookie：web_session 出现或变化（登录成功的可靠标志）
+            try:
+                cur_web_session = None
+                for c in context.cookies():
+                    if c['name'] == 'web_session':
+                        cur_web_session = c['value']
+                        break
+                if cur_web_session and cur_web_session != initial_web_session:
+                    login_ok['flag'] = True
+                    break
+            except Exception:
+                pass
+            # 备选检测：URL 跳转到用户主页
+            try:
+                if '/user/profile' in page.url:
+                    login_ok['flag'] = True
+                    break
+            except Exception:
+                pass
             time.sleep(1)
 
         # 无论 XHR 是否捕获到，等 2 秒让 Cookie 稳定
