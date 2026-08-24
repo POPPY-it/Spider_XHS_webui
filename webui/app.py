@@ -58,6 +58,20 @@ def auth_qr_start():
     return _json({"started": True})
 
 
+@app.post("/api/auth/browser-login/start")
+def auth_browser_login_start():
+    try:
+        login_bridge.start_browser_login()
+    except RuntimeError as exc:
+        return _json({"success": False, "error": str(exc)}, 409)
+    return _json({"started": True})
+
+
+@app.get("/api/auth/browser-login/status")
+def auth_browser_login_status():
+    return login_bridge.browser_login_state()
+
+
 @app.get("/api/auth/qr/image")
 def auth_qr_image():
     try:

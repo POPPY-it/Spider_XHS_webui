@@ -729,13 +729,19 @@ class XHS_Apis():
                 success, msg, res_json = self.get_note_out_comment(note_id, cursor, xsec_token, proxies)
                 if not success:
                     raise Exception(msg)
-                comments = res_json["data"]["comments"]
-                if 'cursor' in res_json["data"]:
-                    cursor = str(res_json["data"]["cursor"])
+                data = res_json.get('data') or {}
+                comments = data.get('comments') or []
+                if not comments:
+                    # 无评论或 token 失效（data 为空）
+                    if not data:
+                        raise Exception(res_json.get('msg') or '当前笔记暂时无法浏览')
+                    break
+                if 'cursor' in data:
+                    cursor = str(data['cursor'])
                 else:
                     break
                 note_out_comment_list.extend(comments)
-                if len(note_out_comment_list) == 0 or not res_json["data"]["has_more"]:
+                if not data.get('has_more'):
                     break
         except Exception as e:
             success = False
@@ -778,23 +784,26 @@ class XHS_Apis():
             返回笔记的全部二级评论
         """
         try:
-            if not comment['sub_comment_has_more']:
+            if not comment.get('sub_comment_has_more'):
                 return True, 'success', comment
-            cursor = comment['sub_comment_cursor']
+            cursor = comment.get('sub_comment_cursor', '')
             inner_comment_list = []
             while True:
                 success, msg, res_json = self.get_note_inner_comment(comment, cursor, xsec_token, proxies)
                 if not success:
                     raise Exception(msg)
-                comments = res_json["data"]["comments"]
-                if 'cursor' in res_json["data"]:
-                    cursor = str(res_json["data"]["cursor"])
+                data = res_json.get('data') or {}
+                comments = data.get('comments') or []
+                if not comments:
+                    break
+                if 'cursor' in data:
+                    cursor = str(data['cursor'])
                 else:
                     break
                 inner_comment_list.extend(comments)
-                if not res_json["data"]["has_more"]:
+                if not data.get('has_more'):
                     break
-            comment['sub_comments'].extend(inner_comment_list)
+            comment.setdefault('sub_comments', []).extend(inner_comment_list)
         except Exception as e:
             success = False
             msg = _log_api_error(e)

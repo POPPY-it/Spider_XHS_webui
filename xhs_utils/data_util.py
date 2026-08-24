@@ -144,29 +144,34 @@ def handle_note_info(data):
     }
 
 def handle_comment_info(data):
-    note_id = data['note_id']
-    note_url = data['note_url']
-    comment_id = data['id']
-    user_id = data['user_info']['user_id']
-    home_url = f'https://www.xiaohongshu.com/user/profile/{user_id}'
-    nickname = data['user_info']['nickname']
-    avatar = data['user_info']['image']
-    content = data['content']
-    show_tags = data['show_tags']
-    like_count = data['like_count']
-    upload_time = timestamp_to_str(data['create_time'])
-    try:
-        ip_location = data['ip_location']
-    except KeyError:
-        ip_location = '未知'
+    note_id = data.get('note_id') or data.get('noteId') or ''
+    note_url = data.get('note_url', '')
+    comment_id = data.get('id') or ''
+    user_info = data.get('user_info') or {}
+    user_id = user_info.get('user_id') or ''
+    home_url = f'https://www.xiaohongshu.com/user/profile/{user_id}' if user_id else ''
+    nickname = user_info.get('nickname', '')
+    avatar = user_info.get('image', '')
+    content = data.get('content', '')
+    show_tags = data.get('show_tags', '')
+    like_count = data.get('like_count', '')
+    upload_time = timestamp_to_str(data['create_time']) if data.get('create_time') else ''
+    ip_location = data.get('ip_location', '未知')
+    # 回复关系（楼中楼）
+    parent_comment_id = data.get('parent_comment_id', '')
+    target_comment = data.get('target_comment') or {}
+    target_comment_id = target_comment.get('id', '') if isinstance(target_comment, dict) else ''
+    target_user = ''
+    if isinstance(target_comment, dict):
+        t_user_info = target_comment.get('user_info') or {}
+        target_user = t_user_info.get('nickname', '')
+    sub_comment_count = data.get('sub_comment_count', '')
     pictures = []
     try:
-        pictures_temp = data['pictures']
+        pictures_temp = data.get('pictures') or []
         for picture in pictures_temp:
             try:
                 pictures.append(picture['info_list'][1]['url'])
-                # success, msg, img_url = XHS_Apis.get_note_no_water_img(picture['info_list'][1]['url'])
-                # pictures.append(img_url)
             except (KeyError, IndexError, TypeError):
                 pass
     except (KeyError, TypeError):
@@ -185,6 +190,10 @@ def handle_comment_info(data):
         'upload_time': upload_time,
         'ip_location': ip_location,
         'pictures': pictures,
+        'parent_comment_id': parent_comment_id,
+        'target_comment_id': target_comment_id,
+        'target_user': target_user,
+        'sub_comment_count': sub_comment_count,
     }
 def save_to_xlsx(datas, file_path, type='note'):
     wb = openpyxl.Workbook()

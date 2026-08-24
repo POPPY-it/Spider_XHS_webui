@@ -633,19 +633,19 @@ class XHSLoginApi:
 
         res = resp.json()
         data = res.get('data') or {}
-        if not res.get('success') or data.get('code_status') != 2:
-            raise RuntimeError(res.get('msg') or '二维码最终登录状态无效')
-        login_info = data.get('login_info') or {}
+        login_info = data.get('login_info') or data.get('loginInfo') or {}
         session = str(login_info.get('session') or '')
         if session:
-            # Replace the anonymous session even when Set-Cookie parsing is
-            # unavailable.  Keeping the visitor session would produce a false
-            # login success.
+            # 旧格式：body 里带正式 session
             cookies.pop('web_session', None)
             cookies['web_session'] = session
             self.profile.update_cookies(cookies)
-        elif not cookies.get('web_session') or cookies.get('web_session') == visitor_session:
-            raise RuntimeError('二维码登录响应缺少正式 web_session')
+        elif res.get('success'):
+            # 新格式：success=True 但 data 为空，凭证通过 Set-Cookie 下发
+            if not cookies.get('web_session') or cookies.get('web_session') == visitor_session:
+                raise RuntimeError('二维码登录响应缺少正式 web_session')
+        else:
+            raise RuntimeError(res.get('msg') or '二维码最终登录状态无效')
 
         return cookies
 

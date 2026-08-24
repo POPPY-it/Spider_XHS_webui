@@ -91,25 +91,48 @@ def _discover_notes(api, req: dict, log) -> list:
 
 
 def _fetch_comments(api, note_url: str, log) -> list:
-    """抓取笔记全部评论并标准化；失败时返回空列表。"""
-    try:
-        success, msg, raw_comments = api.get_note_all_comment(note_url)
-        if not success:
-            log(f"  评论抓取失败：{msg}")
+    """抓取笔记全部评论（一级 + 二级/楼中楼）并标准化；失败时返回空列表。
+
+    评论接口有频率限制，遇到「访问频繁」会自动等待重试。
+    """
+    import time as _t
+    _t.sleep(2.0)  # 评论接口频率限制较严，加大间隔
+    for attempt in range(3):
+        try:
+            success, msg, raw_comments = api.get_note_all_comment(note_url)
+            if not success:
+                if "频繁" in (msg or "") or "稍后再试" in (msg or ""):
+                    log(f"  评论接口限频，等待重试（第{attempt + 1}次）...")
+                    _t.sleep(15 * (attempt + 1))
+                    continue
+                log(f"  评论抓取失败：{msg}")
+                return []
+            comments = []
+            for c in raw_comments:
+                try:
+                    c = dict(c)
+                    c["note_id"] = (c.get("note_id") or "")
+                    c["note_url"] = note_url
+                    c["parent_comment_id"] = ""   # 一级评论无父评论
+                    comments.append(handle_comment_info(c))
+                    # 展开二级评论（楼中楼回复）
+                    sub_comments = c.get("sub_comments") or []
+                    for sc in sub_comments:
+                        try:
+                            sc = dict(sc)
+                            sc["note_id"] = (c.get("note_id") or "")
+                            sc["note_url"] = note_url
+                            sc["parent_comment_id"] = (c.get("id") or "")   # 父评论是一级评论
+                            comments.append(handle_comment_info(sc))
+                        except Exception:
+                            continue
+                except Exception:
+                    continue
+            return comments
+        except Exception as exc:
+            log(f"  评论抓取异常：{exc}")
             return []
-        comments = []
-        for c in raw_comments:
-            try:
-                c = dict(c)
-                c["note_id"] = (c.get("note_id") or "")
-                c["note_url"] = note_url
-                comments.append(handle_comment_info(c))
-            except Exception:
-                continue
-        return comments
-    except Exception as exc:
-        log(f"  评论抓取异常：{exc}")
-        return []
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -297,9 +320,10 @@ def _export_worker(task_id: str, req: dict) -> None:
             if success and info:
                 comments = _fetch_comments(api, url, lambda m: _log(task_id, m)) if include_comments else []
                 try:
-                    exporters.write_note(info, comments, collection)
+                    folder = exporters.export_note_folder(info, comments, collection)
                     exporters.append_jsonl(info, comments, collection)
                     count += 1
+                    _log(task_id, f"  ✓ 已保存：{folder}")
                 except Exception as exc:
                     _log(task_id, f"  写入失败：{exc}")
             else:

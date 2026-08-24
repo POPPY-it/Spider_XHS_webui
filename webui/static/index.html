@@ -1205,11 +1205,13 @@
         <div class="actions">
           <button class="btn btn-primary" id="auth-qr-start">生成二维码</button>
           <button class="btn btn-ghost" id="auth-qr-regen" style="display:none">重新生成</button>
+          <button class="btn btn-ghost" id="auth-browser-login">浏览器扫码登录（推荐）</button>
         </div>
         <div class="qr-area" id="auth-qr-area">
           <div style="margin-top:14px"><img id="auth-qr-img" alt="登录二维码"></div>
           <div class="qr-status" id="auth-qr-status"></div>
         </div>
+        <div class="qr-status" id="auth-browser-status" style="margin-top:10px"></div>
       </div>
     </section>
 
@@ -1614,6 +1616,42 @@ function resetQr() {
 }
 $("auth-qr-start").addEventListener("click", startQr);
 $("auth-qr-regen").addEventListener("click", startQr);
+
+// 浏览器扫码登录（Playwright 真实浏览器，绕过设备安全验证风控）
+$("auth-browser-login").addEventListener("click", async () => {
+  const btn = $("auth-browser-login");
+  const statusBox = $("auth-browser-status");
+  btn.disabled = true; btn.textContent = "启动中…";
+  statusBox.textContent = "正在打开浏览器窗口…";
+  try {
+    const r = await api("/api/auth/browser-login/start", { method: "POST" });
+    // 轮询登录状态
+    while (true) {
+      await new Promise(res => setTimeout(res, 2000));
+      const st = await api("/api/auth/browser-login/status");
+      if (st.state === "success") {
+        statusBox.innerHTML = `<span class="red">✓ ${esc(st.message)}</span>`;
+        toast("登录成功，Cookie 已保存");
+        refreshAuth();
+        break;
+      }
+      if (st.state === "failed") {
+        statusBox.innerHTML = `<span class="red">✗ ${esc(st.error || st.message)}</span>`;
+        toast("浏览器登录失败", true);
+        break;
+      }
+      if (st.state === "running") {
+        statusBox.textContent = "请在浏览器窗口扫码登录…";
+      }
+      if (st.state === "idle") break;
+    }
+  } catch (e) {
+    statusBox.innerHTML = `<span class="red">✗ ${esc(e.message)}</span>`;
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = "浏览器扫码登录（推荐）";
+  }
+});
 
 /* ---------- 历史 ---------- */
 async function loadHistory() {

@@ -181,7 +181,7 @@ def _qr_worker() -> None:
 
     try:
         cookie_str = login.qrcode_login(
-            show_in_terminal=False, timeout_seconds=180, poll_interval=2.0
+            show_in_terminal=False, timeout_seconds=300, poll_interval=2.0
         )
         if not cookie_str:
             if captured.get("expired"):
@@ -211,3 +211,63 @@ def _qr_worker() -> None:
     finally:
         login.close()
         _qr_state["active"] = False
+
+
+# ---------------------------------------------------------------------------
+# Playwright 真实浏览器扫码登录（绕过 verifyType=120 设备安全验证风控）
+# ---------------------------------------------------------------------------
+
+_browser_login_state = None
+_BROWSER_LOGIN_LOCK = threading.Lock()
+
+
+def start_browser_login() -> None:
+    """启动 Playwright 浏览器扫码登录后台线程；已有进行中则抛 RuntimeError。"""
+    global _browser_login_state
+    with _BROWSER_LOGIN_LOCK:
+        if _browser_login_state and _browser_login_state.get("active"):
+            raise RuntimeError("已有浏览器扫码登录进行中")
+        _browser_login_state = {
+            "active": True,
+            "state": "running",
+            "message": "浏览器已打开，请扫码登录",
+        }
+    threading.Thread(target=_browser_login_worker, daemon=True).start()
+
+
+def browser_login_state() -> dict:
+    st = _browser_login_state
+    if not st or not st.get("active"):
+        return {"state": "idle"}
+    out = {"state": st.get("state", "running"), "message": st.get("message", "")}
+    if st.get("state") == "failed":
+        out["error"] = st.get("message", "")
+    return out
+
+
+def _browser_login_worker() -> None:
+    global _browser_login_state
+    try:
+        from webui.playwright_login import browser_login
+        cookie = browser_login()
+        save_cookie_to_env(cookie)
+        # 拿昵称
+        nickname = ""
+        try:
+            auth, api = _build_authed_api(cookie)
+            ok, _, res = api.get_user_me()
+            if ok:
+                data = (res or {}).get("data") or {}
+                nickname = data.get("nickname") or ""
+            auth.close()
+        except Exception:
+            pass
+        _browser_login_state.update(
+            state="success",
+            message=f"登录成功：{nickname}".strip() or "登录成功",
+            nickname=nickname or None,
+        )
+    except Exception as exc:
+        _browser_login_state.update(state="failed", message=str(exc))
+    finally:
+        _browser_login_state["active"] = False
