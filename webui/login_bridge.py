@@ -237,7 +237,7 @@ def start_browser_login() -> None:
 
 def browser_login_state() -> dict:
     st = _browser_login_state
-    if not st or not st.get("active"):
+    if not st:
         return {"state": "idle"}
     out = {"state": st.get("state", "running"), "message": st.get("message", "")}
     if st.get("state") == "failed":
