@@ -1248,6 +1248,13 @@
         </div>
       </div>
       <div class="card">
+        <div class="card-title">从本机 Chrome 导入</div>
+        <p class="hint" style="margin-bottom:12px">读取本机 Chrome 里已登录的小红书 Cookie，一键写入。适合会话过期后快速续期，无需手动复制。</p>
+        <div class="actions">
+          <button class="btn btn-ghost" id="auth-import-chrome">从 Chrome 一键导入</button>
+        </div>
+      </div>
+      <div class="card">
         <div class="card-title">扫码登录</div>
         <p class="hint" style="margin-bottom:12px">用小红书 App 扫码，登录成功后 Cookie 会自动写入 .env。</p>
         <div class="actions">
@@ -1639,6 +1646,16 @@ $("auth-save-cookie").addEventListener("click", async () => {
     await refreshAuth();
   } catch (e) { toast(e.message, true); }
   finally { btn.disabled = false; btn.textContent = "保存并验证"; }
+});
+
+$("auth-import-chrome").addEventListener("click", async () => {
+  const btn = $("auth-import-chrome"); btn.disabled = true; btn.textContent = "导入中…";
+  try {
+    const res = await api("/api/auth/import-chrome", { method: "POST" });
+    toast("已从 Chrome 导入会话：" + (res.nickname || ""));
+    await refreshAuth();
+  } catch (e) { toast("导入失败：" + e.message, true); }
+  finally { btn.disabled = false; btn.textContent = "从 Chrome 一键导入"; }
 });
 
 /* ---------- 扫码登录 ---------- */

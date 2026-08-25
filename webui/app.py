@@ -75,6 +75,17 @@ def auth_browser_login_status():
     return login_bridge.browser_login_state()
 
 
+@app.post("/api/auth/import-chrome")
+def auth_import_chrome():
+    """从本机 Chrome 读取小红书 Cookie 并写入 .env（会话过期后一键续期）。"""
+    with AUTH_SEM:
+        from webui.import_chrome_cookie import import_from_chrome
+        result = import_from_chrome()
+    if not result.get("success"):
+        return _json({"success": False, "error": result.get("error", "导入失败")}, 400)
+    return _json({"success": True, "nickname": result.get("nickname"), "red_id": result.get("red_id")})
+
+
 @app.get("/api/auth/qr/image")
 def auth_qr_image():
     try:
@@ -96,8 +107,20 @@ def auth_qr_status():
 # ---------------------------------------------------------------------------
 
 
+def _auth_block():
+    """任务启动前校验登录态；失效返回错误响应，否则返回 None。"""
+    with AUTH_SEM:
+        st = login_bridge.check_auth_status()
+    if not st.get("valid"):
+        return _json({"success": False, "error": "登录态失效，请先重新登录：" + st.get("error", "")}, 401)
+    return None
+
+
 @app.post("/api/tasks/crawl")
 def task_crawl(payload: dict):
+    blocked = _auth_block()
+    if blocked:
+        return blocked
     try:
         task_id = tasks.start_task("crawl", payload or {})
     except RuntimeError as exc:
@@ -107,6 +130,9 @@ def task_crawl(payload: dict):
 
 @app.post("/api/tasks/export")
 def task_export(payload: dict):
+    blocked = _auth_block()
+    if blocked:
+        return blocked
     try:
         task_id = tasks.start_task("export", payload or {})
     except RuntimeError as exc:
