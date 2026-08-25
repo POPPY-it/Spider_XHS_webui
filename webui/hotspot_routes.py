@@ -140,6 +140,56 @@ def _apply_filters(notes: list[dict], req: dict) -> list[dict]:
     return notes
 
 
+def _split_queries(query: str) -> list:
+    """把多关键词字符串拆成词列表（支持中英文逗号/换行）。"""
+    return [q.strip() for q in re.split(r"[,，\n]", query or "") if q.strip()]
+
+
+def _fetch_author_fans(api, cands: list, log, cap: int = 50) -> None:
+    """为候选的唯一作者取粉丝数（best-effort），写回 fans 字段。"""
+    targets, seen = [], set()
+    for c in cands:
+        uid = c.get("user_id") or ""
+        if uid and uid not in seen:
+            seen.add(uid)
+            targets.append(uid)
+        if len(targets) >= cap:
+            break
+    fans_map = {}
+    for uid in targets:
+        try:
+            ok, msg, res = api.get_user_info(uid)
+            if ok and res:
+                interactions = (res.get("data") or {}).get("interactions") or []
+                if len(interactions) > 1:
+                    fans_map[uid] = _norm_int(interactions[1].get("count"))
+        except Exception:
+            pass
+        time.sleep(0.5)
+    for c in cands:
+        uid = c.get("user_id") or ""
+        if uid in fans_map:
+            c["fans"] = fans_map[uid]
+
+
+def _score_candidates(cands: list, lowfan: bool) -> list:
+    """按互动数或互动/粉丝比排序，并打标低粉爆款（is_lowfan）。"""
+    for c in cands:
+        interact = (c.get("liked_count", 0) + c.get("collected_count", 0)
+                    + c.get("comment_count", 0) + c.get("share_count", 0))
+        c["_interact"] = interact
+        fans = c.get("fans") or 0
+        c["ratio"] = round(interact / max(fans, 1), 2) if fans else None
+        c["is_lowfan"] = bool(fans and fans < 10000 and interact >= 500 and (c["ratio"] or 0) >= 1.0)
+    if lowfan:
+        cands.sort(key=lambda c: (1 if c.get("is_lowfan") else 0, c.get("ratio") or 0, c.get("_interact")), reverse=True)
+    else:
+        cands.sort(key=lambda c: c.get("_interact", 0), reverse=True)
+    for c in cands:
+        c.pop("_interact", None)
+    return cands
+
+
 def _hotspot_worker(task_id: str, req: dict) -> None:
     """热点采集后台任务：搜索 + 过滤 + 存 sources.jsonl。"""
     auth = None
@@ -147,35 +197,52 @@ def _hotspot_worker(task_id: str, req: dict) -> None:
         from webui.login_bridge import _build_authed_api
 
         auth, api = _build_authed_api()
-        query = (req.get("query") or "").strip()
-        if not query:
-            raise RuntimeError("品类/关键词不能为空")
+        queries = _split_queries(req.get("query", ""))
+        if not queries:
+            raise RuntimeError("品类/关键词不能为空（多个词用逗号分隔）")
         count = int(req.get("count", 30) or 30)
         sort = SORT_MAP.get(req.get("sort", "popularity"), 2)
         days = DAYS_MAP.get(req.get("days", "week"), 2)
         note_type = NOTE_TYPE_MAP.get(req.get("note_type", "all"), 0)
-
-        _log(task_id, f"搜索「{query}」 目标 {count} 条…")
-        ok, msg, raw_notes = api.search_some_note(
-            query=query,
-            require_num=count,
-            sort_type_choice=sort,
-            note_type=note_type,
-            note_time=days,
-        )
-        if not ok:
-            raise RuntimeError(f"搜索失败：{msg}")
-        if not raw_notes:
-            raise RuntimeError("搜索无结果")
-
-        notes = [_normalize_note(item) for item in raw_notes]
-        _log(task_id, f"搜索返回 {len(notes)} 条，开始本地筛选…")
-        notes = _apply_filters(notes, req)
-
         max_results = int(req.get("max_results", 20) or 20)
-        notes = notes[:max_results]
+        lowfan = bool(req.get("lowfan", True))
+
+        # 多词下钻：逐词搜索，聚合去重
+        all_notes = []
+        seen_ids = set()
+        for qi, query in enumerate(queries, 1):
+            _log(task_id, f"[{qi}/{len(queries)}] 搜索「{query}」 目标 {count} 条…")
+            ok, msg, raw_notes = api.search_some_note(
+                query=query,
+                require_num=count,
+                sort_type_choice=sort,
+                note_type=note_type,
+                note_time=days,
+            )
+            if not ok:
+                _log(task_id, f"  搜索「{query}」失败：{msg}")
+                continue
+            for item in raw_notes or []:
+                n = _normalize_note(item)
+                if n["note_id"] and n["note_id"] not in seen_ids:
+                    seen_ids.add(n["note_id"])
+                    n["keyword"] = query
+                    all_notes.append(n)
+        if not all_notes:
+            raise RuntimeError("搜索无结果，请换词或放宽条件")
+        _log(task_id, f"共聚合 {len(all_notes)} 条（{len(queries)} 个词，去重后），开始本地筛选…")
+
+        notes = _apply_filters(all_notes, req)
         if not notes:
             raise RuntimeError("筛选后无结果，请放宽条件")
+
+        # 低粉爆款：取作者粉丝，按互动/粉丝比排序
+        if lowfan:
+            _log(task_id, "获取作者粉丝数，识别低粉爆款…")
+            _fetch_author_fans(api, notes, _log)
+        notes = _score_candidates(notes, lowfan)[:max_results]
+        if not notes:
+            raise RuntimeError("排序后无结果")
 
         # 抓评论 + 正文：用带 xsec_token 的完整 URL 拉详情（裸 ID URL 会被风控）
         comments_limit = int(req.get("comments_count", 5) or 5)
@@ -227,15 +294,18 @@ def _hotspot_worker(task_id: str, req: dict) -> None:
         # 记录品类等元信息，供历史 tab 展示
         with (out_dir / "meta.json").open("w", encoding="utf-8") as fh:
             json.dump({
-                "query": query,
+                "query": "，".join(queries),
+                "queries": queries,
                 "count": len(notes),
                 "sort": req.get("sort", "popularity"),
                 "days": req.get("days", "week"),
+                "target_category": (req.get("target_category") or "").strip(),
+                "lowfan": lowfan,
                 "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             }, fh, ensure_ascii=False, indent=2)
 
         _log(task_id, f"完成：{len(notes)} 条已保存")
-        _finish(task_id, "done", result={"query": query, "notes": len(notes)})
+        _finish(task_id, "done", result={"query": "，".join(queries), "notes": len(notes)})
     except Exception as exc:
         _log(task_id, f"任务失败：{exc}")
         _finish(task_id, "error", error=str(exc))
@@ -377,11 +447,12 @@ def hotspot_analyze(task_id: str, payload: dict = None):
     payload = payload or {}
     provider = (payload.get("provider") or "").strip()
     context = (payload.get("context") or "").strip()
-    threading.Thread(target=_analyze_worker, args=(task_id, provider, context), daemon=True).start()
+    target_category = (payload.get("target_category") or "").strip()
+    threading.Thread(target=_analyze_worker, args=(task_id, provider, context, target_category), daemon=True).start()
     return _json({"success": True, "message": "分析已开始，完成后可查看报告"})
 
 
-def _analyze_worker(task_id: str, provider: str, context: str) -> None:
+def _analyze_worker(task_id: str, provider: str, context: str, target_category: str = "") -> None:
     """后台执行 LLM 分析，调用 hotspot_analyze.py。"""
     try:
         sources = HOTSPOT_ROOT / task_id / "sources.jsonl"
@@ -390,6 +461,8 @@ def _analyze_worker(task_id: str, provider: str, context: str) -> None:
             cmd += ["--provider", provider]
         if context:
             cmd += ["--context", context]
+        if target_category:
+            cmd += ["--target-category", target_category]
         _log(task_id, f"开始 AI 分析（provider={provider or '默认'}）…")
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600, cwd=str(PROJECT_ROOT))
         if result.returncode != 0:

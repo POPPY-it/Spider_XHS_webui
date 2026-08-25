@@ -1,0 +1,60 @@
+# 采集配置示例
+
+采集参数都可以在命令行直接给，这里用 JSON 记录"一次品类调研"的完整意图，方便复用。
+
+## 示例 1：摸清「AI工具」品类近一周的爆款
+
+```json
+{
+  "name": "AI工具-周热点",
+  "query": "AI工具",
+  "count": 30,
+  "sort": "popularity",
+  "days": "week",
+  "note_type": "all",
+  "min_filters": ["liked_count>=500", "collected_count>=100"],
+  "exclude_words": ["广告", "代运营", "加微信"],
+  "detail": true,
+  "detail_count": 10,
+  "comments_count": 5,
+  "max_results": 20
+}
+```
+
+对应命令：
+
+```bash
+python xhs-hotspot-analysis/scripts/hotspot_collect.py \
+  --query "AI工具" --count 30 --sort popularity --days week \
+  --min "liked_count>=500,collected_count>=100" \
+  --exclude "广告,代运营,加微信" \
+  --detail --detail-count 10 --comments-count 5 --max-results 20
+```
+
+## 示例 2：只看视频、按最多评论排、三天内的争议话题
+
+```bash
+python xhs-hotspot-analysis/scripts/hotspot_collect.py \
+  --query "母婴避雷" --count 20 --sort comment --days day \
+  --note-type video --min "comment_count>=30"
+```
+
+## 示例 3：不抓详情，快速扫描赛道（配合 --max-results 收敛）
+
+```bash
+python xhs-hotspot-analysis/scripts/hotspot_collect.py \
+  --query "露营装备" --count 50 --sort popularity --days half_year \
+  --min "engagement>=2000" --max-results 30
+```
+
+## 指标字段速查
+
+`--min` 支持这些字段（比较符 `>= <= > < ==`）：
+
+| 字段 | 含义 |
+|---|---|
+| `liked_count` | 点赞数 |
+| `collected_count` | 收藏数 |
+| `comment_count` | 评论数 |
+| `share_count` | 分享数 |
+| `engagement` | 互动总量（四者之和，用于"总热度"门槛） |

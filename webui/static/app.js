@@ -1460,6 +1460,8 @@ function hsCollectFields() {
   });
   return {
     query: $("hs-query").value.trim(),
+    target_category: $("hs-target").value.trim(),
+    lowfan: $("hs-lowfan").checked,
     count: parseInt($("hs-count").value, 10),
     sort: $("hs-sort").value,
     days: $("hs-days").value,
@@ -1534,6 +1536,11 @@ async function hsLoadNotes() {
           <div style="flex:1;min-width:0">
             <div style="font-weight:600;color:var(--ink);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${i + 1}. ${esc(n.title || "（无标题）")}</div>
             <div style="font-size:12px;color:var(--mute);margin-top:4px">${esc(n.user || "")}${n.tags && n.tags.length ? " · " + esc(n.tags.slice(0, 4).join(" #")) : ""}</div>
+            <div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:6px">
+              ${n.keyword ? `<span style="font-size:11px;padding:1px 8px;border-radius:99px;background:var(--paper);border:1px solid var(--line);color:var(--slate)">${esc(n.keyword)}</span>` : ""}
+              ${n.is_lowfan ? `<span style="font-size:11px;padding:1px 8px;border-radius:99px;background:#fff3f0;border:1px solid #f7b6a8;color:var(--red);font-weight:600">低粉爆款</span>` : ""}
+              ${n.ratio != null ? `<span style="font-size:11px;padding:1px 8px;border-radius:99px;background:var(--paper);border:1px solid var(--line);color:var(--slate)">互动/粉丝 ${n.ratio}${n.fans ? ` · ${fmtCount(n.fans)}粉` : ""}</span>` : ""}
+            </div>
           </div>
           <div style="text-align:right;flex-shrink:0">
             <div style="color:var(--red);font-weight:700">${fmtCount(n.liked_count)} 赞</div>
@@ -1625,7 +1632,7 @@ async function hsAnalyze() {
     const res = await api("/api/hotspot/tasks/" + hsTaskId + "/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ target_category: $("hs-target").value.trim() }),
     });
     toast(res.message || "分析已开始");
     setTimeout(hsCheckAnalysis, 3000);

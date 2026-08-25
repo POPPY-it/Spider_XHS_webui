@@ -1,0 +1,29 @@
+{
+  "provider": "deepseek",
+  "providers": {
+    "deepseek": {
+      "name": "DeepSeek",
+      "base_url": "https://api.deepseek.com/v1",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "model": "deepseek-chat"
+    },
+    "gpt": {
+      "name": "OpenAI GPT",
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "model": "gpt-4o"
+    },
+    "kimi": {
+      "name": "Kimi (Moonshot)",
+      "base_url": "https://api.moonshot.cn/v1",
+      "api_key_env": "MOONSHOT_API_KEY",
+      "model": "kimi-k2.5"
+    },
+    "claude": {
+      "name": "Claude",
+      "base_url": "https://api.anthropic.com",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "model": "claude-sonnet-4-5"
+    }
+  }
+}

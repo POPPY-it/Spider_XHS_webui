@@ -474,8 +474,12 @@
         <div class="card-title">采集条件</div>
         <div class="grid-2">
           <div class="field">
-            <label>品类 / 关键词</label>
-            <input type="text" id="hs-query" placeholder="如：AI工具、露营装备、美妆护肤">
+            <label>品类 / 关键词（可多个，逗号分隔）</label>
+            <input type="text" id="hs-query" placeholder="多个词逗号分隔：新手妈妈,待产包,奶粉避坑,母婴店">
+          </div>
+          <div class="field">
+            <label>目标品类（可选，用于跨品类迁移建议）</label>
+            <input type="text" id="hs-target" placeholder="如：母婴。留空则按搜索词分析">
           </div>
           <div class="field">
             <label>抓取数量</label>
@@ -536,6 +540,12 @@
               <option value="10">10 条</option>
               <option value="20">20 条</option>
             </select>
+        </div>
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="hs-lowfan" checked>
+            低粉爆款优先（按 互动/粉丝比 排序，优先找可复制的低粉高互动笔记）
+          </label>
         </div>
         <div class="field">
           <label>互动门槛（点击指标开启，填数值生效）</label>
