@@ -9,8 +9,10 @@ import os
 
 from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from webui import agent, login_bridge, tasks
+from webui.dashboard_routes import router as dashboard_router
 from webui.datas_api import read_excel, scan_datas, open_in_finder, delete_path
 from webui.hotspot_routes import router as hotspot_router
 from webui.pgy_routes import router as pgy_router
@@ -19,6 +21,7 @@ from webui.tasks import AUTH_SEM
 app = FastAPI(title="Spider_XHS WebUI")
 app.include_router(pgy_router)
 app.include_router(hotspot_router)
+app.include_router(dashboard_router)
 
 BASE_DIR = os.path.dirname(__file__)
 INDEX_HTML = os.path.join(BASE_DIR, "static", "index.html")
@@ -304,6 +307,8 @@ def agent_chat(payload: dict):
 # ---------------------------------------------------------------------------
 # 静态
 # ---------------------------------------------------------------------------
+
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
 
 @app.get("/")

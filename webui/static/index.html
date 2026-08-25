@@ -622,6 +622,15 @@
   .hs-rpt-table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 6px 0; }
   .hs-rpt-table th, .hs-rpt-table td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; }
   .hs-rpt-table th { background: var(--paper); font-weight: 700; }
+  /* 数据仪表盘 */
+  .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  .dash-grid .card { margin: 0; }
+  .chart { height: 300px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .kpi { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .kpi .v { font-size: 22px; font-weight: 700; color: var(--ink); }
+  .kpi .l { font-size: 12px; color: var(--mute); margin-top: 3px; }
+  @media (max-width: 900px) { .dash-grid { grid-template-columns: 1fr; } .kpis { grid-template-columns: repeat(2, 1fr); } }
 </style>
 </head>
 <body>
@@ -644,6 +653,7 @@
       <button class="nav-item" data-tab="history"><span class="ico">▤</span>历史</button>
       <button class="nav-item" data-tab="browse"><span class="ico">◫</span>浏览</button>
       <button class="nav-item" data-tab="hotspot"><span class="ico">◉</span>热点分析</button>
+      <button class="nav-item" data-tab="dashboard"><span class="ico">◈</span>数据仪表盘</button>
       <button class="nav-item" data-tab="account"><span class="ico">◉</span>账号</button>
     </nav>
     <div class="account-chip" id="sidebar-account" title="查看账号状态">
@@ -1253,11 +1263,34 @@
       </div>
     </section>
 
+    <!-- 数据仪表盘 -->
+    <section class="tab" id="tab-dashboard">
+      <div class="page-head">
+        <div class="page-title">数据仪表盘</div>
+        <div class="page-desc">笔记 / 评论 / 达人数据的可视化概览。</div>
+      </div>
+      <div class="card">
+        <div class="kpis" id="dashboard-kpis"></div>
+      </div>
+      <div class="dash-grid">
+        <div class="card"><div class="card-title">笔记发布趋势</div><div class="chart" id="chart-note-trend"></div></div>
+        <div class="card"><div class="card-title">评论时间趋势</div><div class="chart" id="chart-comment-trend"></div></div>
+        <div class="card"><div class="card-title">笔记互动 Top10</div><div class="chart" id="chart-note-top"></div></div>
+        <div class="card"><div class="card-title">高频评论用户 Top10</div><div class="chart" id="chart-user-top"></div></div>
+        <div class="card"><div class="card-title">笔记类型分布</div><div class="chart" id="chart-note-type"></div></div>
+        <div class="card"><div class="card-title">达人性别分布</div><div class="chart" id="chart-talent-gender"></div></div>
+        <div class="card"><div class="card-title">达人地区 Top</div><div class="chart" id="chart-talent-loc"></div></div>
+        <div class="card"><div class="card-title">达人粉丝区间</div><div class="chart" id="chart-talent-fans"></div></div>
+        <div class="card"><div class="card-title">达人报价区间</div><div class="chart" id="chart-talent-price"></div></div>
+      </div>
+    </section>
+
   </main>
 </div>
 
 <div class="toast-wrap" id="toasts"></div>
 
+<script src="/static/echarts.min.js"></script>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -1301,6 +1334,7 @@ document.querySelectorAll(".nav-item").forEach(btn => {
     if (btn.dataset.tab === "account") refreshAuth();
     if (btn.dataset.tab === "history") loadHistory();
     if (btn.dataset.tab === "talent") loadPgyStatus();
+    if (btn.dataset.tab === "dashboard") loadDashboard();
   });
 });
 $("sidebar-account").addEventListener("click", () => {
@@ -3096,6 +3130,76 @@ $("agent-input").addEventListener("keydown", (e) => {
     sendAgent();
   }
 });
+
+/* ---------- 数据仪表盘 ---------- */
+const dashCharts = {};
+function dashInit(id, option) {
+  const el = $(id);
+  if (!el || typeof echarts === "undefined") return;
+  if (dashCharts[id]) dashCharts[id].dispose();
+  const chart = echarts.init(el);
+  chart.setOption(option);
+  dashCharts[id] = chart;
+}
+function dashBarOption(xData, yData, opts = {}) {
+  return {
+    tooltip: { trigger: "axis" },
+    grid: { left: 60, right: 24, top: 30, bottom: 60 },
+    xAxis: { type: "category", data: xData, axisLabel: { rotate: opts.rotate || 45 } },
+    yAxis: { type: "value" },
+    series: [{ type: "bar", data: yData, itemStyle: { color: "#f04e37" }, barMaxWidth: 28 }]
+  };
+}
+function dashLineOption(xData, yData) {
+  return {
+    tooltip: { trigger: "axis" },
+    grid: { left: 60, right: 24, top: 30, bottom: 60 },
+    xAxis: { type: "category", data: xData, axisLabel: { rotate: 45 } },
+    yAxis: { type: "value" },
+    series: [{ type: "line", data: yData, smooth: true, itemStyle: { color: "#f04e37" }, areaStyle: { opacity: 0.12 } }]
+  };
+}
+function dashHBarOption(names, values) {
+  return {
+    tooltip: { trigger: "axis" },
+    grid: { left: 140, right: 40, top: 10, bottom: 30 },
+    xAxis: { type: "value" },
+    yAxis: { type: "category", data: names, inverse: true },
+    series: [{ type: "bar", data: values, itemStyle: { color: "#f04e37" }, label: { show: true, position: "right" } }]
+  };
+}
+function dashPieOption(data) {
+  return {
+    tooltip: { trigger: "item", formatter: "{b}: {c} ({d}%)" },
+    legend: { bottom: 0 },
+    series: [{ type: "pie", radius: "60%", center: ["50%", "45%"], data: data }]
+  };
+}
+async function loadDashboard() {
+  let d;
+  try { d = await api("/api/dashboard"); }
+  catch (e) { toast("加载仪表盘失败：" + e.message, true); return; }
+  const k = d.kpi || {};
+  $("dashboard-kpis").innerHTML = [
+    ["笔记数", k.note_count],
+    ["评论数", k.comment_count],
+    ["总点赞", k.total_likes],
+    ["总收藏", k.total_collects]
+  ].map(([l, v]) => `<div class="kpi"><div class="v">${esc(fmtCount(v))}</div><div class="l">${esc(l)}</div></div>`).join("");
+
+  const nt = d.note_trend || [];
+  const ct = d.comment_trend || [];
+  dashInit("chart-note-trend", dashBarOption(nt.map(m => m.month), nt.map(m => m.count)));
+  dashInit("chart-comment-trend", dashLineOption(ct.map(m => m.month), ct.map(m => m.count)));
+  dashInit("chart-note-top", dashHBarOption((d.note_interact_top || []).map(n => n.title.slice(0, 16)), (d.note_interact_top || []).map(n => (n.likes || 0) + (n.comments || 0))));
+  dashInit("chart-user-top", dashHBarOption((d.user_comment_top || []).map(u => u.name), (d.user_comment_top || []).map(u => u.value)));
+  dashInit("chart-note-type", dashPieOption(d.note_type_dist || []));
+  dashInit("chart-talent-gender", dashPieOption((d.talent && d.talent.gender) || []));
+  dashInit("chart-talent-loc", dashHBarOption((d.talent && d.talent.location_top || []).map(x => x.name), (d.talent && d.talent.location_top || []).map(x => x.value)));
+  dashInit("chart-talent-fans", dashBarOption((d.talent && d.talent.fans_bands || []).map(x => x.name), (d.talent && d.talent.fans_bands || []).map(x => x.value), { rotate: 0 }));
+  dashInit("chart-talent-price", dashBarOption((d.talent && d.talent.price_bands || []).map(x => x.name), (d.talent && d.talent.price_bands || []).map(x => x.value), { rotate: 0 }));
+}
+window.addEventListener("resize", () => { Object.values(dashCharts).forEach(c => c.resize()); });
 
 /* ---------- 启动 ---------- */
 refreshAuth();
