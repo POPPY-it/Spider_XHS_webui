@@ -32,7 +32,6 @@ env.bak/
 venv.bak/
 # Local docs and agent configuration (never publish)
 /docs/
-/tests/
 .agent/
 .agents/
 .claude/

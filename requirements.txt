@@ -13,3 +13,4 @@ fastapi
 uvicorn
 psycopg2-binary
 playwright
+pytest
