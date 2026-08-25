@@ -13,9 +13,7 @@
 import glob
 import json
 import os
-import re
 import sys
-import time
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -61,52 +59,66 @@ def backfill_comments(base: str, on_progress=None) -> dict:
                 if on_progress:
                     on_progress(i, len(missing), f"{title}（无 note_url）")
                 continue
-            try:
-                success, msg, raw = api.get_note_all_comment(note_url)
-                if not success or not raw:
-                    stats["failed"] += 1
-                    if on_progress:
-                        on_progress(i, len(missing), f"{title}（{msg or '空'}）")
-                    continue
-                # 标准化评论（含二级）
-                comments = []
-                for c in raw:
-                    try:
-                        c = dict(c)
-                        c["note_id"] = info.get("note_id", "")
-                        c["note_url"] = note_url
-                        c["parent_comment_id"] = ""
-                        comments.append(_std_comment(c))
-                        for sc in (c.get("sub_comments") or []):
-                            try:
-                                sc = dict(sc)
-                                sc["note_id"] = info.get("note_id", "")
-                                sc["note_url"] = note_url
-                                sc["parent_comment_id"] = c.get("id", "")
-                                comments.append(_std_comment(sc))
-                            except Exception:
-                                continue
-                    except Exception:
-                        continue
-                # 更新 note.md：追加「## 评论」章节
-                _append_comments_to_md(md_path, comments)
-                stats["fixed"] += 1
-                if on_progress:
-                    on_progress(i, len(missing), f"✓ {title}（补 {len(comments)} 条）")
-            except Exception as exc:
+            log = (lambda m: on_progress(i, len(missing), f"{title} {m}")) if on_progress else None
+            comments = _fetch_comments_with_retry(api, note_url, log, auth=auth)
+            if not comments:
                 stats["failed"] += 1
                 if on_progress:
-                    on_progress(i, len(missing), f"{title}（异常 {str(exc)[:20]}）")
-            time.sleep(1.5)
+                    on_progress(i, len(missing), f"{title}（空/限频）")
+                # 会话可能已过期：快速检测，过期则中止，避免剩余笔记全部白重试
+                try:
+                    s_ok, s_msg, _ = api.get_user_me()
+                    if not s_ok and "过期" in (s_msg or ""):
+                        stats["failed"] += len(missing) - i
+                        if on_progress:
+                            on_progress(i, len(missing), f"会话失效（{s_msg}），中止补抓，需重新登录")
+                        return stats
+                except Exception:
+                    pass
+                continue
+            for c in comments:
+                c["note_id"] = info.get("note_id", "")
+                c["note_url"] = note_url
+            _append_comments_to_md(md_path, comments)
+            stats["fixed"] += 1
+            if on_progress:
+                on_progress(i, len(missing), f"✓ {title}（补 {len(comments)} 条）")
     finally:
         auth.close()
     return stats
 
 
-def _std_comment(c: dict) -> dict:
-    """把原始评论 dict 转成标准化 dict（对齐 handle_comment_info 的输出字段）。"""
-    from xhs_utils.data_util import handle_comment_info
-    return handle_comment_info(c)
+def _fetch_comments_with_retry(api, note_url, log, auth=None, retries=4) -> list:
+    """带退避重试 + 新 token 兜底的评论抓取；仍失败返回空列表。
+
+    复用 webui.tasks._fetch_comments 的自适应间隔（限频自动拉大、成功回落），
+    空结果再额外重试，最后尝试换新 token 抓一次。
+    """
+    import time as _t
+
+    from webui.tasks import _fetch_comments
+
+    noop = log or (lambda m: None)
+    for attempt in range(retries):
+        comments = _fetch_comments(api, note_url, noop)
+        if comments:
+            return comments
+        if attempt < retries - 1:
+            backoff = 6 * (attempt + 1)
+            noop(f"（第{attempt + 1}次空，退避 {backoff}s 重试）")
+            _t.sleep(backoff)
+    # 兜底：换新 token 再抓一次
+    if auth:
+        try:
+            from spider.spider import Data_Spider
+            s, m, info = Data_Spider(auth).spider_note(note_url)
+            if s and info and info.get("note_url"):
+                comments = _fetch_comments(api, info["note_url"], noop)
+                if comments:
+                    return comments
+        except Exception:
+            pass
+    return []
 
 
 def _append_comments_to_md(md_path: str, comments: list) -> None:

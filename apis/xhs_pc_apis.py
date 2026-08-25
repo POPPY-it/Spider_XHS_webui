@@ -1,6 +1,7 @@
 # encoding: utf-8
 import json
 import re
+import time
 import urllib
 from xhs_utils.xhs_pc import XHSAuth, XHSPcAuth
 from xhs_utils.xhs_pc.http import PcHttpClient
@@ -17,6 +18,9 @@ from xhs_utils.xhs_pc.params import (
 )
 from xhs_utils.http_util import REQUEST_TIMEOUT
 from loguru import logger
+
+# 评论分页请求之间的间隔（秒）。XHS 评论接口限频很紧，慢速分页才能抓全大量评论（含楼中楼）。
+COMMENT_PAGE_INTERVAL = 2.0
 
 """
     获小红书的api
@@ -743,6 +747,7 @@ class XHS_Apis():
                 note_out_comment_list.extend(comments)
                 if not data.get('has_more'):
                     break
+                time.sleep(COMMENT_PAGE_INTERVAL)
         except Exception as e:
             success = False
             msg = _log_api_error(e)
@@ -786,6 +791,8 @@ class XHS_Apis():
         try:
             if not comment.get('sub_comment_has_more'):
                 return True, 'success', comment
+            # 每篇有楼中楼的一级评论，抓取前先间隔，避免连续请求触发限频
+            time.sleep(COMMENT_PAGE_INTERVAL)
             cursor = comment.get('sub_comment_cursor', '')
             inner_comment_list = []
             while True:
@@ -803,6 +810,7 @@ class XHS_Apis():
                 inner_comment_list.extend(comments)
                 if not data.get('has_more'):
                     break
+                time.sleep(COMMENT_PAGE_INTERVAL)
             comment.setdefault('sub_comments', []).extend(inner_comment_list)
         except Exception as e:
             success = False

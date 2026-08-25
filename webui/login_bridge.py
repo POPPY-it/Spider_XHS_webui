@@ -48,6 +48,40 @@ def _build_authed_api(cookie: str = None):
     return auth, api
 
 
+def _resolve_user(res) -> dict:
+    """从 get_user_me 响应解析用户信息；游客会话返回空 dict。"""
+    data = (res or {}).get("data") or {}
+    if data.get("guest"):
+        return {}
+    basic = data.get("basic_info") or {}
+    avatar = ""
+    if basic.get("imageb"):
+        avatar = basic["imageb"]
+    elif basic.get("images"):
+        avatar = basic["images"]
+    return {
+        "nickname": data.get("nickname") or "",
+        "red_id": data.get("red_id") or "",
+        "avatar": avatar,
+    }
+
+
+def _me_from_cookie(cookie: str) -> dict:
+    """用给定 Cookie 调 get_user_me 并解析；游客/失败返回空 dict。"""
+    try:
+        auth = XHSPcAuth.from_cookie(cookie)
+        try:
+            api = XHS_Apis(auth).bootstrap()
+            ok, _, res = api.get_user_me()
+            if not ok:
+                return {}
+            return _resolve_user(res)
+        finally:
+            auth.close()
+    except Exception:
+        return {}
+
+
 def check_auth_status() -> dict:
     """校验 .env 中当前 Cookie，返回 ``{valid, user?, error?}``。"""
     try:
@@ -56,19 +90,10 @@ def check_auth_status() -> dict:
             success, msg, res = api.get_user_me()
             if not success:
                 return {"valid": False, "error": f"登录态无效：{msg}"}
-            data = (res or {}).get("data") or {}
-            nickname = data.get("nickname") or ""
-            red_id = data.get("red_id") or ""
-            avatar = ""
-            basic = data.get("basic_info") or {}
-            if basic.get("imageb"):
-                avatar = basic["imageb"]
-            elif basic.get("images"):
-                avatar = basic["images"]
-            return {
-                "valid": True,
-                "user": {"nickname": nickname, "red_id": red_id, "avatar": avatar},
-            }
+            user = _resolve_user(res)
+            if not user:
+                return {"valid": False, "error": "Cookie 为游客会话，未登录真实账号"}
+            return {"valid": True, "user": user}
         finally:
             auth.close()
     except Exception as e:
@@ -86,8 +111,10 @@ def save_cookie_and_verify(cookie: str) -> dict:
             success, msg, res = api.get_user_me()
             if not success:
                 return {"success": False, "error": f"Cookie 无效：{msg}"}
-            data = (res or {}).get("data") or {}
-            nickname = data.get("nickname") or "未知用户"
+            user = _resolve_user(res)
+            if not user:
+                return {"success": False, "error": "Cookie 为游客会话，未登录真实账号"}
+            nickname = user.get("nickname") or "未知用户"
         finally:
             auth.close()
         save_cookie_to_env(cookie)
@@ -189,18 +216,16 @@ def _qr_worker() -> None:
             else:
                 _qr_state.update(state="failed", error="扫码登录未完成（未扫描或已取消）")
             return
+        user = _me_from_cookie(cookie_str)
+        if not user:
+            _qr_state.update(
+                state="failed",
+                error="扫码后会话未绑定真实账号（可能卡在设备二次验证），未保存",
+                message="扫码后会话未绑定真实账号，未保存",
+            )
+            return
         save_cookie_to_env(cookie_str)
-        nickname = ""
-        try:
-            auth = XHSPcAuth.from_cookie(cookie_str)
-            api = XHS_Apis(auth).bootstrap()
-            ok, _, res = api.get_user_me()
-            if ok:
-                data = (res or {}).get("data") or {}
-                nickname = data.get("nickname") or ""
-            auth.close()
-        except Exception:
-            pass
+        nickname = user.get("nickname") or ""
         _qr_state.update(
             state="success",
             nickname=nickname or None,
@@ -250,18 +275,15 @@ def _browser_login_worker() -> None:
     try:
         from webui.playwright_login import browser_login
         cookie = browser_login()
+        user = _me_from_cookie(cookie)
+        if not user:
+            _browser_login_state.update(
+                state="failed",
+                message="浏览器登录后会话未绑定真实账号（可能卡在设备二次验证），未保存",
+            )
+            return
         save_cookie_to_env(cookie)
-        # 拿昵称
-        nickname = ""
-        try:
-            auth, api = _build_authed_api(cookie)
-            ok, _, res = api.get_user_me()
-            if ok:
-                data = (res or {}).get("data") or {}
-                nickname = data.get("nickname") or ""
-            auth.close()
-        except Exception:
-            pass
+        nickname = user.get("nickname") or ""
         _browser_login_state.update(
             state="success",
             message=f"登录成功：{nickname}".strip() or "登录成功",

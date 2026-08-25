@@ -42,7 +42,7 @@ USER_AGENT = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
               '(KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36')
 
 
-def browser_login(timeout: int = 180) -> str:
+def browser_login(timeout: int = 300) -> str:
     """弹出浏览器窗口让用户扫码登录，成功后返回完整 Cookie 字符串。"""
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False, args=BROWSER_ARGS)
@@ -62,8 +62,12 @@ def browser_login(timeout: int = 180) -> str:
                 if 'login/qrcode/status' in response.url:
                     d = response.json()
                     data = d.get('data') or {}
-                    if data.get('code_status') == 2:
+                    cs = data.get('code_status')
+                    if cs == 2:
                         login_ok['flag'] = True
+                        print('[qrstatus] 登录成功（code_status=2）')
+                    elif cs == 1:
+                        print('[qrstatus] 已扫码，请在手机上确认...')
             except Exception:
                 pass
 
@@ -71,37 +75,28 @@ def browser_login(timeout: int = 180) -> str:
 
         print('正在打开小红书登录页，请在浏览器窗口扫码...')
         try:
-            page.goto('https://www.xiaohongshu.com/explore', wait_until='domcontentloaded', timeout=30000)
+            page.goto('https://www.xiaohongshu.com/login', wait_until='domcontentloaded', timeout=30000)
         except Exception as e:
             print(f'打开页面异常（继续等待登录）: {e}')
 
-        # 记录初始 web_session（访客 session）
-        initial_web_session = None
-        for c in context.cookies():
-            if c['name'] == 'web_session':
-                initial_web_session = c['value']
-
+        # 登录成功只认真实信号：
+        # 1) on_response 捕获 login/qrcode/status 返回 code_status==2（扫码+手机确认）
+        # 2) URL 离开登录页（跳转到主页/用户主页）
+        # 注意：不能把访客 web_session 的出现/变化当成登录，那会在扫码前就误判关闭窗口。
         deadline = time.time() + timeout
+        last_url_log = 0.0
         while time.time() < deadline:
             if login_ok['flag']:
                 break
-            # 检测 Cookie：web_session 出现或变化（登录成功的可靠标志）
             try:
-                cur_web_session = None
-                for c in context.cookies():
-                    if c['name'] == 'web_session':
-                        cur_web_session = c['value']
-                        break
-                if cur_web_session and cur_web_session != initial_web_session:
+                cur = page.url
+                if 'xiaohongshu.com' in cur and '/login' not in cur:
                     login_ok['flag'] = True
+                    print(f'[登录成功] URL 离开登录页: {cur[:80]}')
                     break
-            except Exception:
-                pass
-            # 备选检测：URL 跳转到用户主页
-            try:
-                if '/user/profile' in page.url:
-                    login_ok['flag'] = True
-                    break
+                if time.time() - last_url_log > 15:
+                    print(f'[登录等待] 当前URL: {cur[:80]}')
+                    last_url_log = time.time()
             except Exception:
                 pass
             time.sleep(1)
@@ -114,7 +109,7 @@ def browser_login(timeout: int = 180) -> str:
         browser.close()
 
         if not login_ok['flag']:
-            raise RuntimeError('登录超时：未检测到登录成功')
+            raise RuntimeError('登录超时：未检测到登录成功，请在浏览器窗口扫码并确认')
 
         if 'web_session' not in cookie_str:
             raise RuntimeError('登录未完成：Cookie 中缺少 web_session')
