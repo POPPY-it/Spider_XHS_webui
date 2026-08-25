@@ -42,6 +42,7 @@ document.querySelectorAll(".nav-item").forEach(btn => {
     if (btn.dataset.tab === "history") loadHistory();
     if (btn.dataset.tab === "talent") loadPgyStatus();
     if (btn.dataset.tab === "dashboard") loadDashboard();
+    if (btn.dataset.tab === "comment-analyze") loadCommentAnalysis();
   });
 });
 $("sidebar-account").addEventListener("click", () => {
@@ -1933,6 +1934,151 @@ async function loadDashboard() {
 window.addEventListener("resize", () => { Object.values(dashCharts).forEach(c => c.resize()); });
 const _dashSel = $("dashboard-collection");
 if (_dashSel) _dashSel.addEventListener("change", () => loadDashboard());
+
+/* ---------- 评论洞察 ---------- */
+let caPollTimer = null;
+let caTaskId = null;
+
+function caSetRunning(running) {
+  $("ca-start").disabled = running;
+  $("ca-progress").style.display = running ? "block" : "none";
+}
+
+async function populateCaCollections() {
+  const sel = $("ca-collection");
+  if (!sel || sel.options.length) return;
+  try {
+    const d = await api("/api/dashboard");
+    (d.collections || []).forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c.name;
+      opt.textContent = c.name + "（" + fmtCount(c.note_count) + " 篇）";
+      sel.appendChild(opt);
+    });
+  } catch (e) { /* 忽略 */ }
+}
+
+async function loadCommentAnalysis() {
+  await populateCaCollections();
+  const name = $("ca-collection").value;
+  if (!name) return;
+  try {
+    const d = await api("/api/comment-analyze/result?collection=" + encodeURIComponent(name));
+    renderCommentAnalysis(d);
+  } catch (e) {
+    $("ca-result").innerHTML = `<div class="hint">该集合尚未分析过，点「开始分析」生成洞察。</div>`;
+  }
+}
+
+function startCommentAnalysis() {
+  const name = $("ca-collection").value;
+  if (!name) return toast("请先选择分析对象", true);
+  caSetRunning(true);
+  $("ca-bar").style.width = "0%";
+  $("ca-progress-text").textContent = "提交任务…";
+  api("/api/tasks/comment_analyze", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ collection: name }) })
+    .then(res => { caTaskId = res.task_id; caPoll(); })
+    .catch(e => { caSetRunning(false); toast("启动分析失败：" + e.message, true); });
+}
+
+function caPoll() {
+  caPollTimer = setInterval(async () => {
+    try {
+      const t = await api("/api/tasks/" + caTaskId);
+      if (t.total > 0) {
+        $("ca-bar").style.width = Math.round(t.progress / t.total * 100) + "%";
+        $("ca-progress-text").textContent = `分析中 ${t.progress}/${t.total} 批…`;
+      } else {
+        $("ca-progress-text").textContent = "准备中…";
+      }
+      if (t.status !== "running") {
+        clearInterval(caPollTimer);
+        caSetRunning(false);
+        if (t.status === "success" && t.result) {
+          toast("评论分析完成");
+          renderCommentAnalysis(t.result);
+        } else if (t.status === "failed") {
+          toast("分析失败：" + (t.error || "未知错误"), true);
+        } else if (t.status === "cancelled") {
+          toast("分析已取消", true);
+        }
+      }
+    } catch (e) {
+      clearInterval(caPollTimer); caSetRunning(false);
+      toast("进度读取失败：" + e.message, true);
+    }
+  }, 1500);
+}
+
+function renderCommentAnalysis(d) {
+  const k = d.kpi || {};
+  const cat = d.category_count || {};
+  const sent = d.sentiment_count || {};
+  const topics = d.topic_count || [];
+  const rep = d.representative || {};
+  const neg = d.negative_list || [];
+  const catTotal = Object.values(cat).reduce((a, b) => a + b, 0) || 1;
+
+  const catColors = {"问题咨询":"#4a90d9","购买意向":"#7bb74a","产品评价":"#f0a04b","负面舆情":"#e05b5b","其他":"#9aa5b1"};
+  const sentColors = {"正面":"#7bb74a","中性":"#9aa5b1","负面":"#e05b5b"};
+
+  function bar(name, val, total, color) {
+    const pct = Math.round(val / total * 100);
+    return `<div style="display:flex;align-items:center;gap:8px;margin:5px 0">
+      <div style="width:76px;flex:none;color:var(--slate);font-size:12px">${esc(name)}</div>
+      <div class="bar" style="flex:1"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
+      <div style="width:40px;flex:none;text-align:right;font-size:12px;color:var(--ink)">${val}</div>
+    </div>`;
+  }
+
+  let html = `<div class="kpis">`
+    + `<div class="kpi"><div class="v">${esc(fmtCount(k.analyzed))}</div><div class="l">已分析评论</div></div>`
+    + `<div class="kpi"><div class="v">${esc(fmtCount(k.total))}</div><div class="l">评论总数</div></div>`
+    + `<div class="kpi"><div class="v">${esc(fmtCount(neg.length))}</div><div class="l">负面舆情</div></div>`
+    + `<div class="kpi"><div class="v">${esc(fmtCount(topics.length))}</div><div class="l">话题数</div></div>`
+    + `</div>`;
+
+  html += `<div class="dash-grid" style="margin-top:16px">`;
+  html += `<div class="card"><div class="card-title">评论分类分布</div>`
+    + Object.entries(cat).map(([kk, v]) => bar(kk, v, catTotal, catColors[kk] || "#9aa5b1")).join("") + `</div>`;
+  html += `<div class="card"><div class="card-title">情绪分布</div>`
+    + Object.entries(sent).map(([kk, v]) => bar(kk, v, catTotal, sentColors[kk] || "#9aa5b1")).join("") + `</div>`;
+  html += `<div class="card"><div class="card-title">高频话题 Top</div>`
+    + (topics.length ? topics.map(t => bar(t.name, t.value, topics[0].value, "#4a90d9")).join("") : `<div class="hint">暂无</div>`) + `</div>`;
+  html += `</div>`;
+
+  const CAT_LABELS = {"问题咨询":"问题咨询","购买意向":"购买意向","产品评价":"产品评价","负面舆情":"负面舆情","其他":"其他"};
+  Object.keys(CAT_LABELS).forEach(catKey => {
+    const list = rep[catKey] || [];
+    if (!list.length) return;
+    html += `<div class="card" style="margin-top:16px"><div class="card-title">${CAT_LABELS[catKey]} · 代表评论</div>`
+      + list.map(commentCard).join("") + `</div>`;
+  });
+
+  if (neg.length) {
+    html += `<div class="card" style="margin-top:16px"><div class="card-title" style="color:#e05b5b">负面舆情 · 需关注（${neg.length} 条）</div>`
+      + neg.slice(0, 50).map(commentCard).join("")
+      + (neg.length > 50 ? `<div class="hint">…共 ${neg.length} 条</div>` : "") + `</div>`;
+  }
+
+  $("ca-result").innerHTML = html;
+}
+
+function commentCard(c) {
+  return `<div style="padding:8px 0;border-bottom:1px solid var(--line)">
+    <div style="font-size:12.5px;color:var(--ink);line-height:1.6">${esc(c.content || "")}</div>
+    <div class="hint" style="margin-top:3px;font-size:11px">
+      ${esc(c.username || "")} · ${esc(c.dt || "")} · ${esc((c.note_title || "").slice(0, 20))}
+      ${c.topic ? ` · <span style="color:var(--red)">${esc(c.topic)}</span>` : ""}
+    </div>
+  </div>`;
+}
+
+$("ca-start").addEventListener("click", startCommentAnalysis);
+$("ca-collection").addEventListener("change", () => {
+  $("ca-result").innerHTML = "";
+  loadCommentAnalysis();
+});
 
 /* ---------- 启动 ---------- */
 refreshAuth();

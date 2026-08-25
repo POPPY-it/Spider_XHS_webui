@@ -183,10 +183,42 @@ def start_task(kind: str, req: dict) -> str:
     elif kind == "hotspot":
         from webui.hotspot_routes import _hotspot_worker
         target = _hotspot_worker
+    elif kind == "comment_analyze":
+        target = _comment_analyze_worker
     else:
         raise RuntimeError(f"未知任务类型：{kind}")
     threading.Thread(target=target, args=(task_id, req), daemon=True).start()
     return task_id
+
+
+def _comment_analyze_worker(task_id: str, req: dict) -> None:
+    try:
+        import os as _os
+
+        from webui import comment_analyze
+        from webui.dashboard_api import resolve_collection
+
+        name = (req or {}).get("collection", "")
+        if not name:
+            raise RuntimeError("缺少 collection 参数")
+        path = resolve_collection(name)
+        if not _os.path.isdir(path):
+            raise RuntimeError(f"集合不存在：{name}")
+        _log(task_id, f"开始分析 {name} 的评论…")
+
+        def on_progress(done, total):
+            t = _task(task_id)
+            t["progress"] = done
+            t["total"] = total
+            if done % 20 == 0 or done == total:
+                _log(task_id, f"分析进度 {done}/{total}")
+
+        result = comment_analyze.analyze_collection(path, on_progress)
+        comment_analyze.save_cache(name, result)
+        _log(task_id, f"分析完成：{result['kpi']['analyzed']} 条评论")
+        _finish(task_id, "success", result)
+    except Exception as exc:
+        _finish(task_id, "failed", error=str(exc))
 
 
 def get_task(task_id: str) -> dict:

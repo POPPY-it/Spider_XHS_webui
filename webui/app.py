@@ -140,6 +140,27 @@ def task_export(payload: dict):
     return _json({"task_id": task_id})
 
 
+@app.post("/api/tasks/comment_analyze")
+def task_comment_analyze(payload: dict):
+    blocked = _auth_block()
+    if blocked:
+        return blocked
+    try:
+        task_id = tasks.start_task("comment_analyze", payload or {})
+    except RuntimeError as exc:
+        return _json({"success": False, "error": "已有任务正在运行", "running_task_id": str(exc)}, 409)
+    return _json({"task_id": task_id})
+
+
+@app.get("/api/comment-analyze/result")
+def comment_analyze_result(collection: str = Query(...)):
+    from webui import comment_analyze
+    data = comment_analyze.load_cache(collection)
+    if data is None:
+        return _json({"success": False, "error": "该集合还没有分析结果"}, 404)
+    return _json({"success": True, "collection": collection, **data})
+
+
 @app.get("/api/tasks/{task_id}")
 def task_get(task_id: str):
     task = tasks.get_task(task_id)

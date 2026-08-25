@@ -27,6 +27,7 @@
       <button class="nav-item" data-tab="browse"><span class="ico">◫</span>浏览</button>
       <button class="nav-item" data-tab="hotspot"><span class="ico">◉</span>热点分析</button>
       <button class="nav-item" data-tab="dashboard"><span class="ico">◈</span>数据仪表盘</button>
+      <button class="nav-item" data-tab="comment-analyze"><span class="ico">◈</span>评论洞察</button>
       <button class="nav-item" data-tab="account"><span class="ico">◉</span>账号</button>
     </nav>
     <div class="account-chip" id="sidebar-account" title="查看账号状态">
@@ -668,6 +669,29 @@
         <div class="card"><div class="card-title">达人粉丝区间</div><div class="chart" id="chart-talent-fans"></div></div>
         <div class="card"><div class="card-title">达人报价区间</div><div class="chart" id="chart-talent-price"></div></div>
       </div>
+    </section>
+
+    <!-- 评论洞察 -->
+    <section class="tab" id="tab-comment-analyze">
+      <div class="page-head">
+        <div class="page-title">评论洞察</div>
+        <div class="page-desc">用 AI 分析评论，提炼用户关注点、情绪与负面舆情。</div>
+        <div class="field" style="max-width:340px;margin-top:12px">
+          <label>分析对象</label>
+          <select id="ca-collection"></select>
+        </div>
+      </div>
+      <div class="card">
+        <div class="actions">
+          <button class="btn btn-primary" id="ca-start">开始分析</button>
+          <button class="btn btn-ghost" id="ca-clear" style="display:none">清空结果</button>
+        </div>
+        <div id="ca-progress" style="margin-top:12px;display:none">
+          <div class="bar"><div class="bar-fill" id="ca-bar" style="width:0%"></div></div>
+          <div class="hint" id="ca-progress-text" style="margin-top:6px"></div>
+        </div>
+      </div>
+      <div id="ca-result" style="margin-top:16px"></div>
     </section>
 
   </main>
