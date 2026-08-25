@@ -30,4 +30,9 @@ def dashboard(collection: str = Query("", description="导出集合名，默认�
         data = dashboard_api.aggregate_export_collection(path)
     except Exception as exc:
         return _json({"success": False, "error": f"聚合失败：{exc}"}, 500)
-    return _json({"success": True, "collection": name, **data})
+    return _json({
+        "success": True,
+        "collection": name,
+        "collections": dashboard_api.list_collections(),
+        **data,
+    })

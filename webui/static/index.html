@@ -1267,7 +1267,11 @@
     <section class="tab" id="tab-dashboard">
       <div class="page-head">
         <div class="page-title">数据仪表盘</div>
-        <div class="page-desc">笔记 / 评论 / 达人数据的可视化概览。</div>
+        <div class="page-desc">选择账号/集合，查看笔记 / 评论 / 达人数据概览。</div>
+        <div class="field" style="max-width:340px;margin-top:12px">
+          <label>分析对象</label>
+          <select id="dashboard-collection"></select>
+        </div>
       </div>
       <div class="card">
         <div class="kpis" id="dashboard-kpis"></div>
@@ -1279,6 +1283,7 @@
         <div class="card"><div class="card-title">高频评论用户 Top10</div><div class="chart" id="chart-user-top"></div></div>
         <div class="card"><div class="card-title">笔记类型分布</div><div class="chart" id="chart-note-type"></div></div>
         <div class="card"><div class="card-title">达人性别分布</div><div class="chart" id="chart-talent-gender"></div></div>
+        <div class="card"><div class="card-title">达人类型分布</div><div class="chart" id="chart-talent-trade"></div></div>
         <div class="card"><div class="card-title">达人地区 Top</div><div class="chart" id="chart-talent-loc"></div></div>
         <div class="card"><div class="card-title">达人粉丝区间</div><div class="chart" id="chart-talent-fans"></div></div>
         <div class="card"><div class="card-title">达人报价区间</div><div class="chart" id="chart-talent-price"></div></div>
@@ -3176,9 +3181,22 @@ function dashPieOption(data) {
   };
 }
 async function loadDashboard() {
+  const sel = $("dashboard-collection");
   let d;
-  try { d = await api("/api/dashboard"); }
-  catch (e) { toast("加载仪表盘失败：" + e.message, true); return; }
+  try {
+    const coll = sel && sel.value ? "?collection=" + encodeURIComponent(sel.value) : "";
+    d = await api("/api/dashboard" + coll);
+  } catch (e) { toast("加载仪表盘失败：" + e.message, true); return; }
+  // 填充集合下拉（仅在需要时，保留用户选择）
+  if (sel && sel.options.length === 0 && d.collections && d.collections.length) {
+    d.collections.forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c.name;
+      opt.textContent = c.name + "（" + fmtCount(c.note_count) + " 篇）";
+      sel.appendChild(opt);
+    });
+    sel.value = d.collection || "";
+  }
   const k = d.kpi || {};
   $("dashboard-kpis").innerHTML = [
     ["笔记数", k.note_count],
@@ -3195,11 +3213,14 @@ async function loadDashboard() {
   dashInit("chart-user-top", dashHBarOption((d.user_comment_top || []).map(u => u.name), (d.user_comment_top || []).map(u => u.value)));
   dashInit("chart-note-type", dashPieOption(d.note_type_dist || []));
   dashInit("chart-talent-gender", dashPieOption((d.talent && d.talent.gender) || []));
+  dashInit("chart-talent-trade", dashPieOption((d.talent && d.talent.trade_types) || []));
   dashInit("chart-talent-loc", dashHBarOption((d.talent && d.talent.location_top || []).map(x => x.name), (d.talent && d.talent.location_top || []).map(x => x.value)));
   dashInit("chart-talent-fans", dashBarOption((d.talent && d.talent.fans_bands || []).map(x => x.name), (d.talent && d.talent.fans_bands || []).map(x => x.value), { rotate: 0 }));
   dashInit("chart-talent-price", dashBarOption((d.talent && d.talent.price_bands || []).map(x => x.name), (d.talent && d.talent.price_bands || []).map(x => x.value), { rotate: 0 }));
 }
 window.addEventListener("resize", () => { Object.values(dashCharts).forEach(c => c.resize()); });
+const _dashSel = $("dashboard-collection");
+if (_dashSel) _dashSel.addEventListener("change", () => loadDashboard());
 
 /* ---------- 启动 ---------- */
 refreshAuth();

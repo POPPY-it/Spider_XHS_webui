@@ -87,6 +87,16 @@ def _iter_comments(collection_path: str):
                     yield dt, user
 
 
+def _iter_notesjsonl_comments(notes: list):
+    """从 notes.jsonl 的 comments[] 产出 (datetime, username)。"""
+    for n in notes:
+        for c in (n.get("comments") or []):
+            dt = _parse_dt(c.get("upload_time") or "")
+            user = c.get("nickname") or ""
+            if dt:
+                yield dt, user
+
+
 def _load_newest_talents() -> list:
     """读最新的蒲公英达人完整数据 JSON。"""
     files = glob.glob(os.path.join(EXCEL_DIR, "蒲公英达人_*_完整数据.json"))
@@ -106,6 +116,7 @@ def _talent_bands(talents: list) -> dict:
     location = Counter()
     fans = Counter()
     price = Counter()
+    trade = Counter()
     for t in talents:
         g = (t.get("gender") or "").strip()
         if g:
@@ -113,6 +124,12 @@ def _talent_bands(talents: list) -> dict:
         loc = (t.get("location") or "").strip()
         if loc:
             location[loc] += 1
+        tr = (t.get("tradeType") or "").strip()
+        if tr:
+            for cat in tr.split(" "):
+                cat = cat.strip()
+                if cat:
+                    trade[cat] += 1
         try:
             fans_num = int(t.get("fansNum") or 0)
         except (TypeError, ValueError):
@@ -137,11 +154,17 @@ def _talent_bands(talents: list) -> dict:
             price["500-1000元"] += 1
         else:
             price["1000元+"] += 1
+    trade_top = trade.most_common(12)
+    rest = sum(v for _, v in trade.most_common()[12:])
+    trade_types = [{"name": k, "value": v} for k, v in trade_top]
+    if rest:
+        trade_types.append({"name": "其他", "value": rest})
     return {
         "gender": [{"name": k, "value": v} for k, v in gender.items()],
         "location_top": [{"name": k, "value": v} for k, v in location.most_common(10)],
         "fans_bands": [{"name": k, "value": v} for k, v in fans.items()],
         "price_bands": [{"name": k, "value": v} for k, v in price.items()],
+        "trade_types": trade_types,
     }
 
 
@@ -181,11 +204,15 @@ def aggregate_export_collection(collection_path: str) -> dict:
             "_score": score,
         })
 
-    # 评论：解析 note.md 全量
+    # 评论：优先解析 note.md 全量（含补抓）；若集合无 note.md（仅 notes.jsonl 的导出），回退用 notes.jsonl 的 comments[]
     comment_dt_pairs = Counter()
     user_counter = Counter()
     all_comment_dts = []
-    for dt, user in _iter_comments(collection_path):
+    if glob.glob(os.path.join(collection_path, "*", "*", "note.md")):
+        comment_iter = _iter_comments(collection_path)
+    else:
+        comment_iter = _iter_notesjsonl_comments(notes)
+    for dt, user in comment_iter:
         comment_dt_pairs[_month_key(dt)] += 1
         user_counter[user] += 1
         all_comment_dts.append(dt)
@@ -223,6 +250,26 @@ def resolve_collection(name: str) -> str:
     if not real.startswith(base + os.sep):
         raise ValueError("集合名不合法")
     return real
+
+
+def list_collections() -> list:
+    """列出所有导出集合（按 mtime 新→旧），含笔记数。"""
+    out = []
+    if not os.path.isdir(EXPORT_DIR):
+        return out
+    for name in os.listdir(EXPORT_DIR):
+        path = os.path.join(EXPORT_DIR, name)
+        if not os.path.isdir(path):
+            continue
+        count = 0
+        try:
+            with open(os.path.join(path, "notes.jsonl"), encoding="utf-8") as f:
+                count = sum(1 for line in f if line.strip())
+        except OSError:
+            count = 0
+        out.append({"name": name, "note_count": count})
+    out.sort(key=lambda x: os.path.getmtime(os.path.join(EXPORT_DIR, x["name"])), reverse=True)
+    return out
 
 
 def default_collection() -> str:
