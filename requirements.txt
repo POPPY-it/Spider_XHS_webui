@@ -14,3 +14,5 @@ uvicorn
 psycopg2-binary
 playwright
 pytest
+browser-cookie3
+pycryptodome
