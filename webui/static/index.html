@@ -476,6 +476,7 @@
         <div class="hs-step" data-step="3"><span class="hs-step-num">3</span>AI 报告</div>
       </div>
 
+      <div class="hs-step-panel" id="hs-step-panel-1">
       <div class="card">
         <div class="card-title"><span class="card-step">STEP 1</span>采集条件</div>
         <div class="grid-2">
@@ -585,7 +586,13 @@
         </div>
         <div id="hs-task-log" class="task-log" style="display:none"></div>
       </div>
+      </div>
 
+      <div class="hs-wizard-nav">
+        <button class="btn btn-primary" id="hs-next1">下一步：笔记结果 →</button>
+      </div>
+
+      <div class="hs-step-panel" id="hs-step-panel-2" style="display:none">
       <div class="card" id="hs-result-card" style="display:none">
         <div class="card-title"><span class="card-step">STEP 2</span><span id="hs-result-title">热点笔记</span></div>
         <div class="hs-actions" style="display:flex;gap:8px;margin-bottom:12px">
@@ -594,10 +601,21 @@
         </div>
         <div id="hs-notes"></div>
       </div>
+      </div>
 
+      <div class="hs-wizard-nav">
+        <button class="btn btn-ghost" id="hs-prev2">← 上一步</button>
+        <button class="btn btn-primary" id="hs-next2">下一步：AI 报告 →</button>
+      </div>
+
+      <div class="hs-step-panel" id="hs-step-panel-3" style="display:none">
       <div class="card" id="hs-analysis-card" style="display:none">
         <div class="card-title"><span class="card-step">STEP 3</span>AI 分析报告</div>
         <div id="hs-analysis-content"></div>
+      </div>
+      <div class="hs-wizard-nav">
+        <button class="btn btn-ghost" id="hs-prev3">← 上一步</button>
+      </div>
       </div>
 
       <!-- 笔记详情抽屉 -->

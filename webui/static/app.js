@@ -1464,6 +1464,14 @@ function hsScrollTo(id) {
   requestAnimationFrame(() => el.classList.add("hs-flash"));
   setTimeout(() => el.classList.remove("hs-flash"), 1400);
 }
+function hsGoStep(n) {
+  hsCurStep = n;
+  for (let i = 1; i <= 3; i++) {
+    const p = $("hs-step-panel-" + i);
+    if (p) p.style.display = (i === n) ? "block" : "none";
+  }
+  hsSetStep(n);
+}
 
 function hsCollectFields() {
   // 从互动门槛按钮组收集已开启且填了数值的指标
@@ -1494,6 +1502,7 @@ function hsCollectFields() {
 async function hsRun() {
   const query = $("hs-query").value.trim();
   if (!query) return toast("请输入品类/关键词", true);
+  hsGoStep(1);
   $("hs-task-log").style.display = "block";
   $("hs-task-log").innerHTML = `<span class="spinner" style="border-color:rgba(30,64,216,.2);border-top-color:var(--red)"></span> 正在启动采集…`;
   try {
@@ -1526,8 +1535,7 @@ function hsPoll() {
         clearInterval(hsPollTimer);
         $("hs-task-log").innerHTML = `<span class="badge ok">✓ 采集完成</span>`;
         await hsLoadNotes();
-        hsSetStep(2);
-        hsScrollTo("hs-result-card");
+        hsGoStep(2);
       } else if (task.status === "error") {
         clearInterval(hsPollTimer);
         $("hs-task-log").innerHTML = `<span class="badge warn">✗ ${esc(task.error || "采集失败")}</span>`;
@@ -1545,7 +1553,7 @@ async function hsLoadNotes() {
     const q = $("hs-query").value.trim() || "";
     $("hs-result-card").style.display = "block";
     $("hs-result-title").textContent = `热点笔记（${hsNotes.length} 条）${q ? "· " + q : ""}`;
-    hsSetStep(2);
+    hsGoStep(2);
     if (!hsNotes.length) {
       $("hs-notes").innerHTML = `<div class="empty">没有符合条件的结果，请放宽筛选条件</div>`;
       return;
@@ -1555,6 +1563,10 @@ async function hsLoadNotes() {
       return `<div class="hs-note-row" data-note-id="${esc(n.note_id)}" style="padding:12px 0;border-bottom:1px solid var(--line);cursor:pointer">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
           <div style="flex:1;min-width:0">
+            ${n.viral_score != null ? `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              <span style="font-size:12px;font-weight:800;padding:2px 9px;border-radius:99px;background:${n.viral_score >= 70 ? "#eef1fe" : n.viral_score >= 40 ? "#fef6ec" : "#f2f2f4"};color:${n.viral_score >= 70 ? "var(--brand)" : n.viral_score >= 40 ? "#c47a12" : "var(--mute)"}">爆款潜力 ${n.viral_score}</span>
+              ${n.viral_breakdown ? `<span style="font-size:11px;color:var(--mute)">${esc(n.viral_breakdown.interact_rate || "")} 互动率${n.viral_breakdown.velocity ? " · " + esc(n.viral_breakdown.velocity) + " 爆发" : ""}</span>` : ""}
+            </div>` : ""}
             <div style="font-weight:600;color:var(--ink);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${i + 1}. ${esc(n.title || "（无标题）")}</div>
             <div style="font-size:12px;color:var(--mute);margin-top:4px">${esc(n.user || "")}${n.tags && n.tags.length ? " · " + esc(n.tags.slice(0, 4).join(" #")) : ""}</div>
             <div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:6px">
@@ -1813,8 +1825,7 @@ async function hsCheckAnalysis() {
       $("hs-analysis-card").style.display = "block";
       renderHsReportInto($("hs-analysis-content"), res.content);
       toast("AI 分析报告已生成");
-      hsSetStep(3);
-      hsScrollTo("hs-analysis-card");
+      hsGoStep(3);
     } else {
       setTimeout(hsCheckAnalysis, 4000);
     }
@@ -1837,6 +1848,10 @@ document.querySelectorAll(".hs-metric-toggle").forEach(btn => {
 $("hs-run").addEventListener("click", hsRun);
 $("hs-refresh").addEventListener("click", async () => { if (hsTaskId) await hsLoadNotes(); else toast("还没有采集任务", true); });
 $("hs-analyze").addEventListener("click", hsAnalyze);
+$("hs-next1").addEventListener("click", () => hsGoStep(2));
+$("hs-prev2").addEventListener("click", () => hsGoStep(1));
+$("hs-next2").addEventListener("click", () => hsGoStep(3));
+$("hs-prev3").addEventListener("click", () => hsGoStep(2));
 $("hs-note-detail-close").addEventListener("click", () => { $("hs-note-detail").style.display = "none"; setDrawerBackdrop(false); });
 
 /* ---------- 助手 ---------- */

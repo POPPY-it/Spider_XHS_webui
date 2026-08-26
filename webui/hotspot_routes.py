@@ -94,6 +94,9 @@ def _normalize_note(raw: dict) -> dict:
         "user": user.get("nickname", ""),
         "user_id": user.get("user_id", ""),
         "tags": _extract_topics(note_card),
+        "upload_time": note_card.get("upload_time", ""),
+        "time_desc": note_card.get("time_desc", ""),
+        "ip_location": note_card.get("ip_location", ""),
         "xsec_token": raw.get("xsec_token") or user.get("xsec_token", ""),
         "image_count": len(note_card.get("image_list", []) or []),
     }
@@ -243,6 +246,11 @@ def _hotspot_worker(task_id: str, req: dict) -> None:
         notes = _score_candidates(notes, lowfan)[:max_results]
         if not notes:
             raise RuntimeError("排序后无结果")
+
+        # 爆款潜力评分卡：特征工程 + 批次百分位 → 可解释的爆款分
+        from webui.viral_score import score_notes
+        score_notes(notes)
+        _log(task_id, f"已计算爆款潜力分（{len(notes)} 条）")
 
         # 抓评论 + 正文：用带 xsec_token 的完整 URL 拉详情（裸 ID URL 会被风控）
         comments_limit = int(req.get("comments_count", 5) or 5)

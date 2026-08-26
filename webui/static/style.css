@@ -668,3 +668,8 @@
 .xhs-cmt-text { font-size: 13px; line-height: 1.7; color: var(--ink); word-break: break-word; margin-top: 2px; }
 .xhs-cmt-like { font-size: 11px; color: var(--mute); flex: none; }
 .xhs-open { display: block; margin-top: 16px; color: var(--brand); font-size: 13px; text-decoration: none; }
+
+/* ---------- 热点分析：wizard 分页导航 ---------- */
+.hs-step-panel { min-height: 40px; }
+.hs-wizard-nav { display: flex; justify-content: space-between; gap: 10px; margin: 16px 0 4px; }
+.hs-wizard-nav button { min-width: 110px; }
