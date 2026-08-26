@@ -1466,10 +1466,9 @@ function hsScrollTo(id) {
 }
 function hsGoStep(n) {
   hsCurStep = n;
-  for (let i = 1; i <= 3; i++) {
-    const p = $("hs-step-panel-" + i);
-    if (p) p.style.display = (i === n) ? "block" : "none";
-  }
+  // 动作驱动单页：结果块 n>=2 显示，报告块 n>=3 显示；采集块始终显示
+  $("hs-block-result").style.display = (n >= 2) ? "block" : "none";
+  $("hs-block-report").style.display = (n >= 3) ? "block" : "none";
   hsSetStep(n);
 }
 
@@ -1536,6 +1535,7 @@ function hsPoll() {
         $("hs-task-log").innerHTML = `<span class="badge ok">✓ 采集完成</span>`;
         await hsLoadNotes();
         hsGoStep(2);
+        hsScrollTo("hs-block-result");
       } else if (task.status === "error") {
         clearInterval(hsPollTimer);
         $("hs-task-log").innerHTML = `<span class="badge warn">✗ ${esc(task.error || "采集失败")}</span>`;
@@ -1826,6 +1826,7 @@ async function hsCheckAnalysis() {
       renderHsReportInto($("hs-analysis-content"), res.content);
       toast("AI 分析报告已生成");
       hsGoStep(3);
+      hsScrollTo("hs-block-report");
     } else {
       setTimeout(hsCheckAnalysis, 4000);
     }
@@ -1848,10 +1849,6 @@ document.querySelectorAll(".hs-metric-toggle").forEach(btn => {
 $("hs-run").addEventListener("click", hsRun);
 $("hs-refresh").addEventListener("click", async () => { if (hsTaskId) await hsLoadNotes(); else toast("还没有采集任务", true); });
 $("hs-analyze").addEventListener("click", hsAnalyze);
-$("hs-next1").addEventListener("click", () => hsGoStep(2));
-$("hs-prev2").addEventListener("click", () => hsGoStep(1));
-$("hs-next2").addEventListener("click", () => hsGoStep(3));
-$("hs-prev3").addEventListener("click", () => hsGoStep(2));
 $("hs-note-detail-close").addEventListener("click", () => { $("hs-note-detail").style.display = "none"; setDrawerBackdrop(false); });
 
 /* ---------- 助手 ---------- */
