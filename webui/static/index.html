@@ -470,8 +470,14 @@
         <div class="page-desc">按品类/关键词抓取小红书候选爆文，按你的筛选条件过滤，再交给 AI 拆解"为什么爆"。</div>
       </div>
 
+      <div class="hs-steps" id="hs-steps">
+        <div class="hs-step active" data-step="1"><span class="hs-step-num">1</span>采集条件</div>
+        <div class="hs-step" data-step="2"><span class="hs-step-num">2</span>笔记结果</div>
+        <div class="hs-step" data-step="3"><span class="hs-step-num">3</span>AI 报告</div>
+      </div>
+
       <div class="card">
-        <div class="card-title">采集条件</div>
+        <div class="card-title"><span class="card-step">STEP 1</span>采集条件</div>
         <div class="grid-2">
           <div class="field">
             <label>品类 / 关键词（可多个，逗号分隔）</label>
@@ -581,7 +587,7 @@
       </div>
 
       <div class="card" id="hs-result-card" style="display:none">
-        <div class="card-title" id="hs-result-title">热点笔记</div>
+        <div class="card-title"><span class="card-step">STEP 2</span><span id="hs-result-title">热点笔记</span></div>
         <div class="hs-actions" style="display:flex;gap:8px;margin-bottom:12px">
           <button class="btn btn-primary btn-sm" id="hs-analyze">🤖 AI 分析"为什么爆"</button>
           <span class="hint" style="align-self:center" id="hs-analyze-status"></span>
@@ -590,7 +596,7 @@
       </div>
 
       <div class="card" id="hs-analysis-card" style="display:none">
-        <div class="card-title">AI 分析报告</div>
+        <div class="card-title"><span class="card-step">STEP 3</span>AI 分析报告</div>
         <div id="hs-analysis-content"></div>
       </div>
 

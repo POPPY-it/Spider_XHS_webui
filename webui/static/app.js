@@ -1446,6 +1446,24 @@ $("detail-backdrop").addEventListener("click", () => {
 let hsTaskId = null;
 let hsPollTimer = null;
 let hsNotes = [];
+let hsCurStep = 1;
+
+function hsSetStep(n) {
+  hsCurStep = n;
+  document.querySelectorAll("#hs-steps .hs-step").forEach(s => {
+    const v = +s.dataset.step;
+    s.classList.toggle("done", v < n);
+    s.classList.toggle("active", v === n);
+  });
+}
+function hsScrollTo(id) {
+  const el = $(id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+  el.classList.remove("hs-flash");
+  requestAnimationFrame(() => el.classList.add("hs-flash"));
+  setTimeout(() => el.classList.remove("hs-flash"), 1400);
+}
 
 function hsCollectFields() {
   // 从互动门槛按钮组收集已开启且填了数值的指标
@@ -1508,6 +1526,8 @@ function hsPoll() {
         clearInterval(hsPollTimer);
         $("hs-task-log").innerHTML = `<span class="badge ok">✓ 采集完成</span>`;
         await hsLoadNotes();
+        hsSetStep(2);
+        hsScrollTo("hs-result-card");
       } else if (task.status === "error") {
         clearInterval(hsPollTimer);
         $("hs-task-log").innerHTML = `<span class="badge warn">✗ ${esc(task.error || "采集失败")}</span>`;
@@ -1525,6 +1545,7 @@ async function hsLoadNotes() {
     const q = $("hs-query").value.trim() || "";
     $("hs-result-card").style.display = "block";
     $("hs-result-title").textContent = `热点笔记（${hsNotes.length} 条）${q ? "· " + q : ""}`;
+    hsSetStep(2);
     if (!hsNotes.length) {
       $("hs-notes").innerHTML = `<div class="empty">没有符合条件的结果，请放宽筛选条件</div>`;
       return;
@@ -1580,45 +1601,78 @@ async function hsOpenNote(noteId, row) {
 function hsRenderNoteDetail(res) {
   const note = res.note || {};
   const comments = res.comments || [];
+  const nick = note.nickname || note.user || "";
+  const typeLabel = note.note_type || note.type || "";
   const parts = [];
-  parts.push(`<div class="pgy-detail-sec"><h4>基本信息</h4><div class="pgy-kv">`);
-  parts.push(`<div><span>标题</span><b>${esc(note.title || note.display_title || "")}</b></div>`);
-  parts.push(`<div><span>作者</span><b>${esc(note.nickname || note.user || "")}</b></div>`);
-  parts.push(`<div><span>点赞</span><b>${fmtCount(note.liked_count)}</b></div>`);
-  parts.push(`<div><span>收藏</span><b>${fmtCount(note.collected_count)}</b></div>`);
-  parts.push(`<div><span>评论</span><b>${fmtCount(note.comment_count)}</b></div>`);
-  parts.push(`<div><span>分享</span><b>${fmtCount(note.share_count)}</b></div>`);
-  if (note.ip_location) parts.push(`<div><span>IP</span><b>${esc(note.ip_location)}</b></div>`);
-  if (note.upload_time) parts.push(`<div><span>发布时间</span><b>${esc(note.upload_time)}</b></div>`);
-  parts.push(`</div></div>`);
 
+  // 作者行
+  parts.push(`<div class="xhs-note">`);
+  parts.push(`<div class="xhs-author">`);
+  const ava = note.avatar || "";
+  parts.push(ava
+    ? `<img class="xhs-avatar" src="${esc(ava)}" referrerpolicy="no-referrer" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">`
+    : `<div class="xhs-avatar-fallback" style="display:grid">${esc(nick.charAt(0) || "?")}</div>`);
+  if (ava) parts.push(`<div class="xhs-avatar-fallback">${esc(nick.charAt(0) || "?")}</div>`);
+  parts.push(`<div class="xhs-author-meta">`);
+  parts.push(`<div class="xhs-nick">${esc(nick || "匿名")}</div>`);
+  parts.push(`<div class="xhs-author-sub">${esc(note.ip_location || "")}${note.upload_time ? " · " + esc(note.upload_time) : ""}${typeLabel ? " · " + esc(typeLabel) : ""}</div>`);
+  parts.push(`</div>`);
+  parts.push(`<button class="xhs-follow" disabled>关注</button>`);
+  parts.push(`</div>`);
+
+  // 标题
+  parts.push(`<h1 class="xhs-title">${esc(note.title || note.display_title || "（无标题）")}</h1>`);
+
+  // 正文
   if (res.detail_unavailable) {
-    parts.push(`<div class="pgy-detail-sec"><h4>正文</h4><p class="hint">详情接口被风控（${esc(res.detail_error || "")}），正文全文未获取，以下为标题/摘要。</p>` +
-      `<p style="white-space:pre-wrap;font-size:13px;line-height:1.8;color:var(--ink)">${esc(note.desc || note.title || note.display_title || "")}</p></div>`);
+    parts.push(`<div class="xhs-badge-warn">正文未获取（详情被风控 ${esc(res.detail_error || "")}）</div>`);
+    parts.push(`<div class="xhs-desc">${esc(note.desc || "")}</div>`);
   } else {
-    const body = note.desc || note.title || note.display_title || "";
-    parts.push(`<div class="pgy-detail-sec"><h4>正文</h4><p style="white-space:pre-wrap;font-size:13px;line-height:1.8;color:var(--ink)">${esc(body)}</p></div>`);
+    parts.push(`<div class="xhs-desc">${esc(note.desc || note.title || "")}</div>`);
   }
 
-  if (note.note_url) {
-    parts.push(`<div class="pgy-detail-sec"><h4>原文链接</h4><a href="${esc(note.note_url)}" target="_blank" rel="noopener" style="color:var(--brand);font-size:13px">在浏览器打开原文 →</a></div>`);
-  }
-  if (note.image_list && note.image_list.length) {
-    parts.push(`<div class="pgy-detail-sec"><h4>图片（${note.image_list.length} 张）</h4><div style="display:flex;flex-wrap:wrap;gap:8px">` +
-      note.image_list.map(img => `<img src="${esc(typeof img === "string" ? img : (img && img.url_default) || "")}" style="width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line)" alt="">`).join("") +
-      `</div></div>`);
+  // 媒体：视频封面 / 图集九宫格
+  if (note.video_cover) {
+    parts.push(`<div class="xhs-media video"><img src="${esc(note.video_cover)}" referrerpolicy="no-referrer" alt=""><span class="xhs-play">▶</span></div>`);
+  } else if (note.image_list && note.image_list.length) {
+    parts.push(`<div class="xhs-media">` + note.image_list.map(img => {
+      const src = typeof img === "string" ? img : (img && (img.url_default || img.url)) || "";
+      return `<img src="${esc(src)}" referrerpolicy="no-referrer" alt="">`;
+    }).join("") + `</div>`);
   }
 
-  parts.push(`<div class="pgy-detail-sec"><h4>评论区（${comments.length} 条）</h4>`);
+  // 标签
+  if (note.tags && note.tags.length) {
+    parts.push(`<div class="xhs-tags">` + note.tags.map(t => `<span class="xhs-tag">#${esc(t)}</span>`).join("") + `</div>`);
+  }
+
+  // 互动条
+  parts.push(`<div class="xhs-interactions">`);
+  parts.push(`<span>❤️ ${fmtCount(note.liked_count)}</span>`);
+  parts.push(`<span>⭐ ${fmtCount(note.collected_count)}</span>`);
+  parts.push(`<span>💬 ${fmtCount(note.comment_count)}</span>`);
+  parts.push(`<span>↗ ${fmtCount(note.share_count)}</span>`);
+  parts.push(`</div>`);
+
+  // 评论区
+  parts.push(`<div class="xhs-cmt-title">评论（${comments.length}）</div>`);
+  parts.push(`<div class="xhs-comments">`);
   if (!comments.length) {
-    parts.push(`<p class="hint">${res.comment_error ? "评论加载失败：" + esc(res.comment_error) : "暂无评论"}</p>`);
+    parts.push(`<div class="hint">${res.comment_error ? "评论加载失败：" + esc(res.comment_error) : "暂无评论"}</div>`);
   } else {
     comments.forEach(c => {
-      parts.push(`<div style="padding:10px 0;border-bottom:1px solid var(--line)">
-        <div style="font-size:12px;color:var(--mute);margin-bottom:4px">${esc(c.nickname || "匿名")} · <span style="color:var(--red)">${fmtCount(c.like_count)} 赞</span></div>
-        <div style="font-size:13px;line-height:1.7;color:var(--ink);word-break:break-word">${esc(c.content || "")}</div>
-      </div>`);
+      parts.push(`<div class="xhs-cmt">`);
+      parts.push(`<div class="xhs-cmt-avatar">${esc((c.nickname || "匿").charAt(0))}</div>`);
+      parts.push(`<div class="xhs-cmt-body"><div class="xhs-cmt-nick">${esc(c.nickname || "匿名")}</div><div class="xhs-cmt-text">${esc(c.content || "")}</div></div>`);
+      parts.push(`<div class="xhs-cmt-like">${fmtCount(c.like_count)} 赞</div>`);
+      parts.push(`</div>`);
     });
+  }
+  parts.push(`</div>`);
+
+  // 原文链接
+  if (note.note_url) {
+    parts.push(`<a class="xhs-open" href="${esc(note.note_url)}" target="_blank" rel="noopener">在浏览器打开原文 →</a>`);
   }
   parts.push(`</div>`);
   return parts.join("");
@@ -1759,6 +1813,8 @@ async function hsCheckAnalysis() {
       $("hs-analysis-card").style.display = "block";
       renderHsReportInto($("hs-analysis-content"), res.content);
       toast("AI 分析报告已生成");
+      hsSetStep(3);
+      hsScrollTo("hs-analysis-card");
     } else {
       setTimeout(hsCheckAnalysis, 4000);
     }
